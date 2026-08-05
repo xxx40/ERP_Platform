@@ -100,11 +100,11 @@ def test_business_data_tool_exposes_governed_metric_meaning() -> None:
     registry = ToolRegistry()
     BusinessDataModule(SimpleNamespace(health=lambda: True), catalog).register_tools(registry)
 
-    description = registry.get("data.finance.invoices.query").spec.description
-    assert "invoice_amount (Invoice amount)" in description
+    description = registry.get("data.business.query").spec.description
+    assert "invoice_amount (Invoice amount" in description
     assert "aliases: 发票金额, 开票额" in description
     assert "formula: sum(amount_with_tax)" in description
-    assert "raw SQL and inferred formulas are not accepted" in description
+    assert "Raw SQL, arbitrary connections and writes are never accepted" in description
 
     universal = registry.get("data.business.query").spec
     assert universal.risk_level == "read_only"
@@ -348,7 +348,7 @@ async def test_agent_step_charges_each_langchain_model_call_once() -> None:
 
 async def test_general_understanding_can_still_call_authorized_dynamic_tool() -> None:
     registry = ToolRegistry()
-    _register(registry, "data.finance.invoices.query")
+    _register(registry, "data.business.query")
 
     class Executor:
         def __init__(self):
@@ -399,7 +399,7 @@ async def test_general_understanding_can_still_call_authorized_dynamic_tool() ->
                 user_goal="查询发票金额",
                 summary="由 Agent 判断是否调用已授权动态数据工具。",
             ),
-            "eligible_tool_ids": ["data.finance.invoices.query"],
+            "eligible_tool_ids": ["data.business.query"],
             "overflow_tool_ids": [],
             "messages": [HumanMessage(content="查询发票金额")],
             "agent_iterations": 0,
@@ -489,7 +489,7 @@ def test_procurement_extension_converges_after_business_and_knowledge_tools() ->
     state = {
         "effective_message": "PO202607001 为什么没有全部入库？",
         "raw_artifacts": {
-            "procurement.order.get": [object()],
+            "data.business.query": [object()],
             "knowledge.search": [object()],
         },
         "tool_errors": {},
@@ -508,10 +508,10 @@ def test_procurement_mixed_plan_separates_order_fact_from_policy_query() -> None
     plan = extension.deterministic_plan(
         {
             "effective_message": "PO202607001 为什么没有全部入库？",
-            "raw_artifacts": {"procurement.order.get": [object()]},
+            "raw_artifacts": {"data.business.query": [object()]},
             "tool_errors": {},
         },
-        {"procurement.order.get", "knowledge.search"},
+        {"data.business.query", "knowledge.search"},
         set(),
     )
 

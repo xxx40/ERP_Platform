@@ -90,7 +90,7 @@ class FlakyAnswerModel(FakeModel):
     async def answer_document(self, question, chunks, order=None):
         self.answer_attempts += 1
         if self.answer_attempts == 1:
-            raise ServiceTimeoutError("?????")
+            raise ServiceTimeoutError("公司大模型")
         return await super().answer_document(question, chunks, order)
 
 
@@ -247,7 +247,7 @@ async def test_order_query_uses_adapter_facts(tmp_path) -> None:
     assert response.status == "success"
     assert response.order_card.inbound_status == "未完成入库"
     assert response.document_answer is None
-    assert "procurement.order.get" in response.workflow.allowed_tools
+    assert "data.business.query" in response.workflow.allowed_tools
     assert response.workflow.final_state == "completed"
     assert response.workflow.steps[-1].stage == "converge"
 
@@ -265,7 +265,7 @@ async def test_not_inbound_order_list_queries_business_data_without_rag(tmp_path
     assert response.sources == []
     assert response.presentation[0].type == "table"
     assert response.presentation[0].rows
-    assert "procurement.orders.list" in response.workflow.allowed_tools
+    assert "data.business.query" in response.workflow.allowed_tools
     assert "knowledge.retrieve" not in [span["name"] for span in trace["spans"]]
 
 
@@ -276,10 +276,10 @@ async def test_mixed_answer_separates_facts_and_documents(tmp_path) -> None:
     assert response.document_answer.source_ids == ["S1"]
     assert response.document_answer.confirmed_facts
     assert "订单接口未返回" in response.document_answer.unknowns[0]
-    assert {"procurement.order.get", "knowledge.search"} <= set(
+    assert {"data.business.query", "knowledge.search"} <= set(
         response.workflow.allowed_tools
     )
-    assert "procurement.order.get" in response.workflow.steps[1].tools
+    assert "data.business.query" in response.workflow.steps[1].tools
     assert response.workflow.steps[-1].stage == "converge"
 
 
@@ -501,7 +501,7 @@ async def test_runtime_trace_is_persisted_with_order_span(tmp_path) -> None:
     assert trace["session_id"] == "trace-session"
     names = [span["name"] for span in trace["spans"]]
     assert "agent.tool_discovery" in names
-    assert "purchase_order.get_by_number" in names
+    assert "tool.data.business.query.attempt" in names
     assert "chat.request" in names
     assert all(span["duration_ms"] >= 0 for span in trace["spans"])
 
@@ -523,8 +523,8 @@ async def test_analytics_question_returns_summary_metrics_and_trace(tmp_path) ->
     assert response.analytics_card.trend_metric_key == "purchase_amount"
     assert response.analytics_card.breakdown_metric_key == "purchase_amount"
     assert response.analytics_card.breakdown_chart_type == "pie"
-    assert "procurement.analytics.query" in response.workflow.allowed_tools
-    assert "purchase_analytics.get_overview" in [
+    assert "data.business.query" in response.workflow.allowed_tools
+    assert "tool.data.business.query.attempt" in [
         span["name"] for span in trace["spans"]
     ]
 
@@ -553,7 +553,7 @@ async def test_natural_monthly_order_revenue_wording_routes_to_analytics(tmp_pat
         for item in response.analytics_card.cautions
     )
     assert [call["tool_id"] for call in run["tool_calls"]] == [
-        "procurement.analytics.query"
+        "data.business.query"
     ]
 
 
@@ -593,7 +593,7 @@ async def test_analytics_question_preserves_period_comparison_and_dimension(tmp_
     discovery_span = next(
         span for span in trace["spans"] if span["name"] == "agent.tool_discovery"
     )
-    assert "procurement.analytics.query" in discovery_span["attributes"][
+    assert "data.business.query" in discovery_span["attributes"][
         "selected_tool_ids"
     ]
 
@@ -612,10 +612,10 @@ async def test_graph_runtime_persists_nodes_tools_and_policy_decisions(tmp_path)
     assert {"request_guard", "discover_tools", "agent_step", "execute_tools", "respond"} <= {
         node["node_id"] for node in run["nodes"]
     }
-    assert run["tool_calls"][0]["tool_id"] == "procurement.order.get"
-    assert run["tool_calls"][0]["connector_id"] == "unified-purchase-data-api"
+    assert run["tool_calls"][0]["tool_id"] == "data.business.query"
+    assert run["tool_calls"][0]["connector_id"] == "business-gateway:approved-read-only-connectors"
     assert any(
-        item["action"] == "procurement.order.read" and item["allowed"]
+        item["action"] == "business.data.read" and item["allowed"]
         for item in run["policy_decisions"]
     )
 
@@ -626,7 +626,7 @@ async def test_workflow_role_permission_denial_is_structured_and_persisted(tmp_p
     response = await orchestrator.handle(
         "本季度订单量增长多少？",
         "workflow-policy-session",
-        roles=["procurement_specialist"],
+        roles=["employee"],
     )
     run = await orchestrator.repository.get_workflow_run(response.request_id)
 
@@ -634,7 +634,7 @@ async def test_workflow_role_permission_denial_is_structured_and_persisted(tmp_p
     assert response.error.code == "UNAUTHORIZED"
     assert run["status"] == "unauthorized"
     assert any(
-        item["action"] == "procurement.analytics.read" and not item["allowed"]
+        item["action"] == "business.data.read" and not item["allowed"]
         for item in run["policy_decisions"]
     )
     assert run["tool_calls"] == []
@@ -720,7 +720,7 @@ async def test_composite_question_combines_analytics_and_knowledge(tmp_path) -> 
     assert response.sources
     assert run["workflow_id"] == "platform.generic_readonly_agent"
     assert {call["tool_id"] for call in run["tool_calls"]} == {
-        "procurement.analytics.query",
+        "data.business.query",
         "knowledge.search",
     }
     assert any(step.stage == "agent_loop" for step in response.workflow.steps)
@@ -748,7 +748,7 @@ async def test_composite_workflow_stops_when_analytics_permission_is_missing(
     response = await orchestrator.handle(
         "本季度订单量增长多少，相关流程依据是什么？",
         "composite-denied-session",
-        roles=["procurement_specialist"],
+        roles=["employee"],
     )
     run = await orchestrator.repository.get_workflow_run(response.request_id)
 
@@ -757,7 +757,7 @@ async def test_composite_workflow_stops_when_analytics_permission_is_missing(
     denied = next(
         item
         for item in run["policy_decisions"]
-        if item["action"] == "procurement.analytics.read"
+        if item["action"] == "business.data.read"
     )
     assert denied["allowed"] is False
     assert run["tool_calls"] == []
@@ -780,7 +780,7 @@ async def test_composite_workflow_keeps_analytics_when_knowledge_is_missing(
     assert response.workflow.final_state == "partial"
     assert response.error.code == "KNOWLEDGE_EVIDENCE_NOT_FOUND"
     assert {call["tool_id"] for call in run["tool_calls"]} == {
-        "procurement.analytics.query",
+        "data.business.query",
         "knowledge.search",
     }
 
@@ -877,9 +877,9 @@ def semantic_plan(
     clarification_question: str | None = None,
     operation: str | None = None,
 ) -> SemanticRoutePlan:
-    if operation is None and required_tools and "procurement.orders.list" in required_tools:
+    if operation is None and required_tools and "data.business.query" in required_tools:
         inbound_state = (tool_arguments or {}).get(
-            "procurement.orders.list", {}
+            "data.business.query", {}
         ).get("inbound_state")
         operation = (
             "list_not_inbound_orders"
@@ -911,13 +911,24 @@ async def test_semantic_route_executes_explicit_previous_month_period(
         semantic_plan(
             RequestKind.BUSINESS_QUERY,
             operation="analyze_procurement",
-            required_tools=["procurement.analytics.query"],
+            required_tools=["data.business.query"],
             tool_arguments={
-                "procurement.analytics.query": {
-                    "period_type": "month",
+                "data.business.query": {
+                    "dataset_id": "procurement.purchase_orders",
+                    "measures": [
+                        "order_count",
+                        "purchase_amount",
+                        "supplier_count",
+                        "average_order_amount",
+                    ],
+                    "dimensions": ["business_status"],
+                    "time_range": {
+                        "field": "order_date",
+                        "start": "2026-07-01",
+                        "end": "2026-07-31",
+                    },
                     "comparison_mode": "previous_period",
-                    "breakdown_dimension": "category",
-                    "period_key": "2026-07",
+                    "limit": 100,
                 }
             },
             data_needs=["business_data"],
@@ -925,7 +936,7 @@ async def test_semantic_route_executes_explicit_previous_month_period(
     )
     orchestrator = build_orchestrator_with_model(tmp_path, model)
 
-    response = await orchestrator.handle("???????????")
+    response = await orchestrator.handle("上个月采购经营数据概览")
     run = await orchestrator.repository.get_workflow_run(response.request_id)
 
     assert response.status == "success"
@@ -933,9 +944,13 @@ async def test_semantic_route_executes_explicit_previous_month_period(
     metrics = {item.key: item.value for item in response.analytics_card.metrics}
     assert metrics["purchase_amount"] == 12840000
     assert [call["tool_id"] for call in run["tool_calls"]] == [
-        "procurement.analytics.query"
+        "data.business.query"
     ]
-    assert run["tool_calls"][0]["arguments"]["period_key"] == "2026-07"
+    assert run["tool_calls"][0]["arguments"]["time_range"] == {
+        "field": "order_date",
+        "start": "2026-07-01",
+        "end": "2026-07-31",
+    }
 
 
 @pytest.mark.parametrize(
@@ -959,10 +974,17 @@ async def test_semantic_route_keeps_order_list_paraphrases_on_business_data(
         semantic_plan(
             RequestKind.BUSINESS_QUERY,
             operation=operation,
-            required_tools=["procurement.orders.list"],
+            required_tools=["data.business.query"],
             tool_arguments={
-                "procurement.orders.list": {
-                    "inbound_state": "incomplete" if expected_state == "not_inbound" else "not_inbound",
+                "data.business.query": {
+                    "dataset_id": "procurement.purchase_orders",
+                    "filters": [
+                        {
+                            "field": "business_status",
+                            "operator": "eq",
+                            "value": expected_state,
+                        }
+                    ],
                     "limit": 20,
                 }
             },
@@ -978,7 +1000,7 @@ async def test_semantic_route_keeps_order_list_paraphrases_on_business_data(
     assert response.understanding.intent == IntentType.ORDER
     assert response.understanding.request_kind == "business_query"
     assert response.understanding.routing_mode == "semantic_router_v1"
-    assert response.understanding.required_tools == ["procurement.orders.list"]
+    assert response.understanding.required_tools == ["data.business.query"]
     assert response.order_list is not None
     assert response.order_list.inbound_state == expected_state
     assert response.sources == []
@@ -1067,9 +1089,9 @@ async def test_semantic_route_executes_business_then_knowledge_for_composite(
     model = SemanticRoutingModel(
         semantic_plan(
             RequestKind.COMPOSITE,
-            required_tools=["procurement.order.get", "knowledge.search"],
+            required_tools=["data.business.query", "knowledge.search"],
             tool_arguments={
-                "procurement.order.get": {"order_number": "PO202607001"},
+                "data.business.query": {"order_number": "PO202607001"},
                 "knowledge.search": {
                     "question": "采购订单未完成入库的原因和处理流程",
                     "mode": "supporting_evidence",
@@ -1090,14 +1112,14 @@ async def test_semantic_route_executes_business_then_knowledge_for_composite(
     assert response.order_card.order_number == "PO202607001"
     assert response.sources
     assert [call["tool_id"] for call in run["tool_calls"]] == [
-        "procurement.order.get",
+        "data.business.query",
         "knowledge.search",
     ]
     agent_loop_step = next(
         step for step in response.workflow.steps if step.stage == "agent_loop"
     )
     assert agent_loop_step.tools == [
-        "procurement.order.get",
+        "data.business.query",
         "knowledge.search",
     ]
 
@@ -1108,9 +1130,9 @@ async def test_semantic_business_route_reports_permission_denial_without_rag(
     model = SemanticRoutingModel(
         semantic_plan(
             RequestKind.BUSINESS_QUERY,
-            required_tools=["procurement.orders.list"],
+            required_tools=["data.business.query"],
             tool_arguments={
-                "procurement.orders.list": {
+                "data.business.query": {
                     "inbound_state": "incomplete",
                     "limit": 20,
                 }
@@ -1160,9 +1182,9 @@ async def test_low_confidence_business_plan_is_normalized_to_scope_clarification
     model = SemanticRoutingModel(
         semantic_plan(
             RequestKind.BUSINESS_QUERY,
-            required_tools=["procurement.orders.list"],
+            required_tools=["data.business.query"],
             tool_arguments={
-                "procurement.orders.list": {
+                "data.business.query": {
                     "inbound_state": "incomplete",
                     "limit": 20,
                 }
@@ -1371,10 +1393,9 @@ async def test_model_fabricated_business_tool_converges_to_unsupported_capabilit
     run = await orchestrator.repository.get_workflow_run(response.request_id)
 
     assert response.status == "not_found"
-    assert response.error.code == "UNSUPPORTED_CAPABILITY"
-    assert "\u5e93\u5b58" in response.error.message
-    assert "\u5c1a\u672a\u63a5\u5165" in response.error.message
-    assert run["tool_calls"] == []
+    assert response.error.code == "DATASET_NOT_FOUND"
+    assert "inventory" in response.error.message
+    assert [call["tool_id"] for call in run["tool_calls"]] == ["data.business.query"]
 
 
 async def test_unconfigured_semantic_router_never_degrades_to_keyword_routing(
@@ -1421,9 +1442,9 @@ async def test_semantic_single_order_status_without_number_clarifies_without_too
             "data_needs": ["business_data"],
             "evidence_need": False,
             "confidence": 0.97,
-            "required_tools": ["data.procurement.purchase_orders.query"],
+            "required_tools": ["data.business.query"],
             "tool_arguments": {
-                "data.procurement.purchase_orders.query": {"limit": 100}
+                "data.business.query": {"limit": 100}
             },
             "missing_fields": [],
             "summary": "single purchase order status",
@@ -1439,7 +1460,7 @@ async def test_semantic_single_order_status_without_number_clarifies_without_too
 
     assert response.status == "needs_clarification"
     assert response.understanding.intent == IntentType.CLARIFY
-    assert response.understanding.required_tools == ["procurement.order.get"]
+    assert response.understanding.required_tools == []
     assert response.understanding.missing_fields == ["order_number"]
     assert response.error.code == "ROUTING_CLARIFICATION_REQUIRED"
     assert "PO202607001" in response.error.message
@@ -1460,9 +1481,9 @@ async def test_semantic_procurement_overview_uses_analytics_card_without_raw_dat
             "data_needs": ["business_data"],
             "evidence_need": False,
             "confidence": 0.98,
-            "required_tools": ["data.procurement.purchase_orders.query"],
+            "required_tools": ["data.business.query"],
             "tool_arguments": {
-                "data.procurement.purchase_orders.query": {
+                "data.business.query": {
                     "measures": [
                         "order_count",
                         "purchase_amount",
@@ -1470,6 +1491,7 @@ async def test_semantic_procurement_overview_uses_analytics_card_without_raw_dat
                         "average_order_amount",
                     ],
                     "time_range": {
+                        "field": "order_date",
                         "start": "2026-07-01",
                         "end": "2026-07-31",
                     },
@@ -1492,7 +1514,7 @@ async def test_semantic_procurement_overview_uses_analytics_card_without_raw_dat
 
     assert response.status == "success"
     assert response.understanding.intent == IntentType.ANALYTICS
-    assert response.understanding.required_tools == ["procurement.analytics.query"]
+    assert response.understanding.required_tools == ["data.business.query"]
     assert response.analytics_card is not None
     assert response.analytics_card.period_type == "month"
     metrics = {item.key: item.value for item in response.analytics_card.metrics}
@@ -1507,9 +1529,13 @@ async def test_semantic_procurement_overview_uses_analytics_card_without_raw_dat
     assert response.analytics_card.recommendations
     assert response.presentation == []
     assert [call["tool_id"] for call in run["tool_calls"]] == [
-        "procurement.analytics.query"
+        "data.business.query"
     ]
-    assert run["tool_calls"][0]["arguments"]["period_key"] == "2026-07"
+    assert run["tool_calls"][0]["arguments"]["time_range"] == {
+        "field": "order_date",
+        "start": "2026-07-01",
+        "end": "2026-07-31",
+    }
     assert "dataset_id" not in serialized
     assert '"schema_version"' not in serialized
     assert '"connector_id"' not in serialized

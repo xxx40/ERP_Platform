@@ -167,14 +167,28 @@ class GenericOrchestratorModule:
                     ),
                     "route": "reject",
                 }
-            return {
-                "understanding": self.build_understanding(
-                    question,
-                    state["question"],
-                    state.get("memory", {}),
-                ),
-                "route": "success",
-            }
+            understanding = self.build_understanding(
+                question,
+                state["question"],
+                state.get("memory", {}),
+            )
+            if understanding.intent == IntentType.CLARIFY:
+                missing_fields = understanding.missing_fields or ["order_number"]
+                return {
+                    "understanding": understanding,
+                    "clarification_request": {
+                        "target_tool_id": "data.business.query",
+                        "collected_arguments": {
+                            "dataset_id": "procurement.purchase_orders"
+                        },
+                        "missing_fields": missing_fields,
+                        "prompt": "请提供需要查询的采购订单编号，例如 PO202607001。",
+                        "persist": True,
+                        "error_code": "ROUTING_CLARIFICATION_REQUIRED",
+                    },
+                    "route": "clarify",
+                }
+            return {"understanding": understanding, "route": "success"}
 
         understanding = semantic_route.to_understanding(state["question"])
         state["workflow_trace"].steps.append(

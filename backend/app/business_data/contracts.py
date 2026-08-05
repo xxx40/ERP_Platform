@@ -48,6 +48,7 @@ class SemanticDataQueryInput(BaseModel):
     dimensions: list[str] = Field(default_factory=list, max_length=8)
     filters: list[SemanticFilterInput] = Field(default_factory=list, max_length=24)
     time_range: TimeRangeInput | None = None
+    comparison_mode: Literal["previous_period", "year_over_year"] | None = None
     order_by: list[QueryOrderInput] = Field(default_factory=list, max_length=8)
     limit: int = Field(default=100, ge=1, le=5000)
 

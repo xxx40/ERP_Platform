@@ -9,6 +9,7 @@ from app.adapters.model import ModelAdapter
 from app.adapters.purchase_order import MockPurchaseOrderAdapter, UnifiedPurchaseDataAdapter
 from app.adapters.business_data import BusinessDataAdapter
 from app.business_data.catalog import BusinessDatasetCatalog
+from app.domains.procurement.embedded import EmbeddedProcurementBusinessDataAdapter
 from app.adapters.wise import WiseAdapter
 from app.api.routes import router
 from app.core.config import Settings, get_settings
@@ -84,13 +85,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     policy_provider = build_policy_provider(active_settings)
     knowledge_access_provider = build_knowledge_access_provider(active_settings)
     secret_provider = build_secret_provider(active_settings)
-    business_data_adapter = BusinessDataAdapter(
-        active_settings,
-        service_identity=(
-            service_identity
-            if active_settings.service_auth_mode.lower() != "api_key"
-            else None
-        ),
+    business_gateway_adapter = (
+        BusinessDataAdapter(
+            active_settings,
+            service_identity=(
+                service_identity
+                if active_settings.service_auth_mode.lower() != "api_key"
+                else None
+            ),
+        )
+        if active_settings.purchase_order_provider == "http"
+        else None
+    )
+    business_data_adapter = EmbeddedProcurementBusinessDataAdapter(
+        order_adapter,
+        fallback_adapter=business_gateway_adapter,
     )
     business_dataset_catalog_holder = {
         "current": BusinessDatasetCatalog.from_yaml(

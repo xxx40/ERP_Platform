@@ -43,16 +43,37 @@ def _stub_order_status_model(monkeypatch) -> None:
             data_needs=["business_data"],
             evidence_need=False,
             confidence=0.99,
-            required_tools=["procurement.order.get"],
+            required_tools=["data.business.query"],
             tool_arguments={
-                "procurement.order.get": {"order_number": "PO202607001"}
+                "data.business.query": {
+                    "dataset_id": "procurement.purchase_orders",
+                    "fields": [
+                        "order_number",
+                        "supplier_name",
+                        "buyer_name",
+                        "purchase_org_name",
+                        "order_date",
+                        "currency",
+                        "total_amount",
+                        "business_status",
+                        "status_reason",
+                    ],
+                    "filters": [
+                        {
+                            "field": "order_number",
+                            "operator": "eq",
+                            "value": "PO202607001",
+                        }
+                    ],
+                    "limit": 1,
+                }
             },
-            summary="??????????????",
+            summary="查询采购订单状态。",
         )
 
     async def answer_artifacts(self, question, artifacts):
         del self, question, artifacts
-        return DocumentAnswer(conclusion="??????????")
+        return DocumentAnswer(conclusion="已返回授权范围内的采购订单状态。")
 
     async def grade_answer(self, question, answer, artifacts, chunks):
         del self, question, answer, artifacts, chunks
@@ -60,7 +81,7 @@ def _stub_order_status_model(monkeypatch) -> None:
             supported=True,
             complete=True,
             issues=[],
-            reason="???????????????????????",
+            reason="回答由受控只读业务数据支持。",
         )
 
     monkeypatch.setattr(Settings, "model_configured", property(lambda self: True))
@@ -172,9 +193,7 @@ async def test_platform_catalog_and_runtime_record_are_inspectable(
     assert tools.status_code == 200
     assert {item["tool_id"] for item in tools.json()["items"]} >= {
         "knowledge.search",
-        "procurement.order.get",
-        "procurement.orders.list",
-        "procurement.analytics.query",
+        "data.business.query",
     }
     assert "model.answer.generate" not in {
         item["tool_id"] for item in tools.json()["items"]
@@ -184,7 +203,7 @@ async def test_platform_catalog_and_runtime_record_are_inspectable(
     assert run.json()["workflow_id"] == "platform.generic_readonly_agent"
     assert run.json()["nodes"][0]["node_id"] == "restore_context"
     assert run.json()["nodes"][1]["node_id"] == "request_guard"
-    assert run.json()["tool_calls"][0]["connector_id"] == "unified-purchase-data-api"
+    assert run.json()["tool_calls"][0]["connector_id"] == "business-gateway:approved-read-only-connectors"
     await app.state.repository.close()
 
 
@@ -333,12 +352,12 @@ async def test_platform_admin_can_publish_and_rollback_plugin_snapshot(tmp_path)
 
     assert validated.status_code == 200
     assert validated.json()["graph_count"] == 1
-    assert validated.json()["capability_count"] == 5
+    assert validated.json()["capability_count"] == 2
     assert published.status_code == 200
-    assert skills_after_publish.json()["count"] == 5
+    assert skills_after_publish.json()["count"] == 2
     assert versions.json()["items"][0]["action"] == "publish"
     assert rolled_back.status_code == 200
-    assert skills_after_rollback.json()["count"] == 6
+    assert skills_after_rollback.json()["count"] == 3
     await app.state.repository.close()
 
 

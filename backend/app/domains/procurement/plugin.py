@@ -9,9 +9,7 @@ class ProcurementPlugin:
     plugin_id = "builtin.procurement"
 
     def __init__(self, context: PluginContext) -> None:
-        self.module = ProcurementToolModule(
-            order_adapter=context.order_adapter,
-        )
+        self.module = ProcurementToolModule()
         self.extension = ProcurementAgentExtension(
             repository=context.repository,
             retrieval=context.retrieval,

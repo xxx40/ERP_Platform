@@ -1,5 +1,7 @@
 import re
+from datetime import datetime, timezone
 
+from app.business_data.contracts import DataArtifact
 from app.agents.extensions import (
     BaseAgentDomainExtension,
     ClarificationPlan,
@@ -18,6 +20,7 @@ from app.schemas.chat import (
     DocumentAnswer,
     IntentType,
     OrderCard,
+    OrderListItem,
     OrderListResult,
     PresentationBlock,
     Understanding,
@@ -31,9 +34,19 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
     extension_id = "procurement"
     priority = 100
 
-    ORDER_TOOL_ID = "procurement.order.get"
-    ORDER_LIST_TOOL_ID = "procurement.orders.list"
-    ANALYTICS_TOOL_ID = "procurement.analytics.query"
+    BUSINESS_DATA_TOOL_ID = "data.business.query"
+    # Internal aliases keep the domain projection code readable. They are not
+    # registered or exposed through discovery; every model call uses the
+    # universal business-data contract above.
+    ORDER_TOOL_ID = BUSINESS_DATA_TOOL_ID
+    ORDER_LIST_TOOL_ID = BUSINESS_DATA_TOOL_ID
+    ANALYTICS_TOOL_ID = BUSINESS_DATA_TOOL_ID
+    LEGACY_TOOL_IDS = {
+        "procurement.order.get",
+        "procurement.orders.list",
+        "procurement.analytics.query",
+        "data.procurement.purchase_orders.query",
+    }
     KNOWLEDGE_TOOL_ID = "knowledge.search"
     AMBIGUOUS_REVENUE_MARKERS = ("订单收益", "采购收益")
 
@@ -132,7 +145,7 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
             if analytics
             else None,
             analytics_comparison=(
-                "year_over_year" if "同比" in question else "previous_period"
+                        "year_over_year" if "同比" in question else "previous_period"
             )
             if analytics
             else None,
@@ -152,6 +165,8 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
         evidence_requested = self._contains(question, self.EVIDENCE_MARKERS)
         order_lookup = self._contains(question, self.ORDER_LOOKUP_MARKERS)
         order_list_requested = self._is_order_list_query(question, order_number)
+        business_available = self._business_tool_available(available_tool_ids)
+        business_denied = self._business_tool_denied(denied_tool_ids)
 
         if analytics_requested and self._has_unsupported_period(question):
             return ErrorPlan(
@@ -162,86 +177,122 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
                 reason="unsupported_analytics_period",
             )
 
-        if (
-            order_list_requested
-            and self.ORDER_LIST_TOOL_ID not in available_tool_ids
-            and self.ORDER_LIST_TOOL_ID in denied_tool_ids
-        ):
-            return ErrorPlan(UnauthorizedError("当前身份无权查询采购订单列表。"))
-        if (
-            analytics_requested
-            and self.ANALYTICS_TOOL_ID not in available_tool_ids
-            and self.ANALYTICS_TOOL_ID in denied_tool_ids
-        ):
-            return ErrorPlan(
-                UnauthorizedError("当前身份无权使用采购分析能力。")
+        if (order_list_requested or analytics_requested or order_number) and not business_available and business_denied:
+            message = (
+                "当前身份无权使用业务数据查询能力。"
+                if analytics_requested
+                else "当前身份无权查询采购业务数据。"
             )
-        if (
-            order_number
-            and self.ORDER_TOOL_ID not in available_tool_ids
-            and self.ORDER_TOOL_ID in denied_tool_ids
-        ):
-            return ErrorPlan(UnauthorizedError("当前身份无权查询采购订单。"))
+            return ErrorPlan(UnauthorizedError(message))
+
+        if not business_available:
+            return None
+
         if (
             order_list_requested
-            and self.ORDER_LIST_TOOL_ID in available_tool_ids
-            and not raw.get(self.ORDER_LIST_TOOL_ID)
-            and self.ORDER_LIST_TOOL_ID not in failed
+            and not raw.get(self.BUSINESS_DATA_TOOL_ID)
+            and self.BUSINESS_DATA_TOOL_ID not in failed
         ):
+            # The list profile remains semantic: the connector decides how the
+            # registered purchase-order dataset materializes inbound state.
             return ToolCallPlan(
-                tool_id=self.ORDER_LIST_TOOL_ID,
+                tool_id=self.BUSINESS_DATA_TOOL_ID,
                 arguments={
-                    "inbound_state": self._inbound_state(question),
+                    "dataset_id": "procurement.purchase_orders",
+                    "fields": [
+                        "order_number",
+                        "supplier_name",
+                        "order_date",
+                        "currency",
+                        "total_amount",
+                        "business_status",
+                        "status_reason",
+                    ],
+                    "filters": [
+                        {
+                            "field": "business_status",
+                            "operator": "eq",
+                            "value": self._inbound_state(question),
+                        }
+                    ],
                     "limit": 20,
                 },
                 reason="procurement_order_list_deterministic_fallback",
             )
         if (
             not order_number
-            and self.ORDER_TOOL_ID in available_tool_ids
             and order_lookup
             and not analytics_requested
             and not order_list_requested
         ):
             return ClarificationPlan(
-                target_tool_id=self.ORDER_TOOL_ID,
-                collected_arguments={},
+                target_tool_id=self.BUSINESS_DATA_TOOL_ID,
+                collected_arguments={
+                    "dataset_id": "procurement.purchase_orders",
+                },
                 missing_fields=["order_number"],
                 prompt="请提供采购订单号，例如 PO202607001。",
             )
         if (
             order_number
-            and self.ORDER_TOOL_ID in available_tool_ids
-            and not raw.get(self.ORDER_TOOL_ID)
-            and self.ORDER_TOOL_ID not in failed
+            and not raw.get(self.BUSINESS_DATA_TOOL_ID)
+            and self.BUSINESS_DATA_TOOL_ID not in failed
         ):
             return ToolCallPlan(
-                tool_id=self.ORDER_TOOL_ID,
-                arguments={"order_number": order_number},
+                tool_id=self.BUSINESS_DATA_TOOL_ID,
+                arguments={
+                    "dataset_id": "procurement.purchase_orders",
+                    "fields": [
+                        "order_number",
+                        "supplier_name",
+                        "buyer_name",
+                        "purchase_org_name",
+                        "order_date",
+                        "currency",
+                        "total_amount",
+                        "business_status",
+                        "status_reason",
+                    ],
+                    "filters": [
+                        {
+                            "field": "order_number",
+                            "operator": "eq",
+                            "value": order_number,
+                        }
+                    ],
+                    "limit": 1,
+                },
                 reason="procurement_order_deterministic_fallback",
             )
         if (
             analytics_requested
-            and self.ANALYTICS_TOOL_ID in available_tool_ids
-            and not raw.get(self.ANALYTICS_TOOL_ID)
-            and self.ANALYTICS_TOOL_ID not in failed
+            and not raw.get(self.BUSINESS_DATA_TOOL_ID)
+            and self.BUSINESS_DATA_TOOL_ID not in failed
         ):
             return ToolCallPlan(
-                tool_id=self.ANALYTICS_TOOL_ID,
+                tool_id=self.BUSINESS_DATA_TOOL_ID,
                 arguments={
-                    "period_type": self._analytics_period(question),
+                    "dataset_id": "procurement.purchase_orders",
+                    "measures": [
+                        "order_count",
+                        "purchase_amount",
+                        "supplier_count",
+                        "average_order_amount",
+                    ],
+                    "dimensions": [
+                        "supplier_name" if "供应商" in question else "business_status"
+                    ],
+                    "time_range": self._time_range_for_question(question),
                     "comparison_mode": (
                         "year_over_year" if "同比" in question else "previous_period"
                     ),
-                    "breakdown_dimension": (
-                        "supplier" if "供应商" in question else "category"
-                    ),
+                    "limit": 100,
                 },
                 reason="procurement_analytics_deterministic_fallback",
             )
         if (
             evidence_requested
-            and (raw.get(self.ORDER_TOOL_ID) or raw.get(self.ANALYTICS_TOOL_ID))
+            and self._has_business_artifact(raw)
             and self.KNOWLEDGE_TOOL_ID in available_tool_ids
             and not raw.get(self.KNOWLEDGE_TOOL_ID)
             and self.KNOWLEDGE_TOOL_ID not in failed
@@ -275,29 +326,45 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
         self, target_tool_id, message, missing_fields, collected_arguments
     ):
         arguments = dict(collected_arguments)
-        if target_tool_id != self.ORDER_TOOL_ID or "order_number" not in missing_fields:
+        if (
+            target_tool_id != self.BUSINESS_DATA_TOOL_ID
+            or "order_number" not in missing_fields
+        ):
             return arguments
         order_number = extract_order_number(message)
         if order_number:
-            arguments["order_number"] = order_number
+            arguments.update(
+                {
+                    "dataset_id": "procurement.purchase_orders",
+                    "fields": [
+                        "order_number",
+                        "supplier_name",
+                        "buyer_name",
+                        "purchase_org_name",
+                        "order_date",
+                        "currency",
+                        "total_amount",
+                        "business_status",
+                        "status_reason",
+                    ],
+                    "filters": [
+                        {
+                            "field": "order_number",
+                            "operator": "eq",
+                            "value": order_number,
+                        }
+                    ],
+                    "limit": 1,
+                }
+            )
         return arguments
 
     def handles(self, state):
-        raw = state.get("raw_artifacts", {})
-        return bool(
-            raw.get(self.ORDER_TOOL_ID)
-            or raw.get(self.ORDER_LIST_TOOL_ID)
-            or raw.get(self.ANALYTICS_TOOL_ID)
-        )
+        return self._has_business_artifact(state.get("raw_artifacts", {}))
 
     def next_route_after_tools(self, state):
         raw = state.get("raw_artifacts", {})
-        has_business_facts = bool(
-            raw.get(self.ORDER_TOOL_ID)
-            or raw.get(self.ORDER_LIST_TOOL_ID)
-            or raw.get(self.ANALYTICS_TOOL_ID)
-        )
-        if not has_business_facts:
+        if not self._has_business_artifact(raw):
             return None
         understanding = state.get("understanding")
         required_tools = set(
@@ -550,30 +617,36 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
         }
 
     def summarize(self, tool_id, result):
-        if tool_id == self.ORDER_TOOL_ID and isinstance(result, OrderCard):
+        order = self._coerce_artifact(result, OrderCard)
+        order_list = self._coerce_artifact(result, OrderListResult)
+        analytics = self._coerce_artifact(result, AnalyticsCard)
+        if order is not None:
             return {
-                "tool_id": tool_id,
-                "order_number": result.order_number,
-                "business_status": result.business_status,
-                "receipt_status": result.receipt_status,
-                "inbound_status": result.inbound_status,
+                "tool_id": self.BUSINESS_DATA_TOOL_ID,
+                "projection": "order_card",
+                "order_number": order.order_number,
+                "business_status": order.business_status,
+                "receipt_status": order.receipt_status,
+                "inbound_status": order.inbound_status,
             }
-        if tool_id == self.ORDER_LIST_TOOL_ID and isinstance(result, OrderListResult):
+        if order_list is not None:
             return {
-                "tool_id": tool_id,
-                "inbound_state": result.inbound_state,
-                "total_count": result.total_count,
-                "returned_count": result.returned_count,
-                "order_numbers": [item.order_number for item in result.items[:20]],
+                "tool_id": self.BUSINESS_DATA_TOOL_ID,
+                "projection": "order_list",
+                "inbound_state": order_list.inbound_state,
+                "total_count": order_list.total_count,
+                "returned_count": order_list.returned_count,
+                "order_numbers": [item.order_number for item in order_list.items[:20]],
             }
-        if tool_id == self.ANALYTICS_TOOL_ID and isinstance(result, AnalyticsCard):
+        if analytics is not None:
             return {
-                "tool_id": tool_id,
-                "title": result.title,
-                "summary": result.summary,
+                "tool_id": self.BUSINESS_DATA_TOOL_ID,
+                "projection": "analytics_card",
+                "title": analytics.title,
+                "summary": analytics.summary,
                 "metrics": [
                     {"key": item.key, "value": item.value, "unit": item.unit}
-                    for item in result.metrics[:6]
+                    for item in analytics.metrics[:6]
                 ],
             }
         return None
@@ -582,16 +655,18 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
         consumed = {
             item.artifact_type
             for item in artifacts
-            if item.artifact_type
-            in {self.ORDER_TOOL_ID, self.ORDER_LIST_TOOL_ID, self.ANALYTICS_TOOL_ID}
+            if item.artifact_type in {self.BUSINESS_DATA_TOOL_ID, *self.LEGACY_TOOL_IDS}
         }
         blocks = []
         for artifact in artifacts:
-            if artifact.artifact_type != self.ORDER_LIST_TOOL_ID:
+            if artifact.artifact_type not in consumed:
                 continue
-            result = OrderListResult.model_validate(artifact.data)
+            result = artifact.data
+            order_list = self._coerce_artifact(result, OrderListResult)
+            if order_list is None:
+                continue
             rows = []
-            for item in result.items:
+            for item in order_list.items:
                 amount = (
                     f"{item.total_amount:,.2f} {item.currency or ''}".strip()
                     if item.total_amount is not None
@@ -630,6 +705,84 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
         self.model_adapter = model_adapter
         self.answer_verifier.model_adapter = model_adapter
 
+    @classmethod
+    def _business_tool_available(cls, available_tool_ids) -> bool:
+        return bool(
+            cls.BUSINESS_DATA_TOOL_ID in available_tool_ids
+            or set(available_tool_ids).intersection(cls.LEGACY_TOOL_IDS)
+        )
+
+    @classmethod
+    def _business_tool_denied(cls, denied_tool_ids) -> bool:
+        return bool(
+            cls.BUSINESS_DATA_TOOL_ID in denied_tool_ids
+            or set(denied_tool_ids).intersection(cls.LEGACY_TOOL_IDS)
+        )
+
+    @classmethod
+    def _values_for(cls, raw, tool_id):
+        if tool_id == cls.BUSINESS_DATA_TOOL_ID:
+            values = []
+            for key in (cls.BUSINESS_DATA_TOOL_ID, *cls.LEGACY_TOOL_IDS):
+                values.extend(raw.get(key, []))
+            return values
+        return raw.get(tool_id, [])
+
+    @classmethod
+    def _has_business_artifact(cls, raw) -> bool:
+        return bool(cls._values_for(raw, cls.BUSINESS_DATA_TOOL_ID))
+
+    @classmethod
+    def _coerce_artifact(cls, value, expected_type):
+        if isinstance(value, expected_type):
+            return value
+        if isinstance(value, dict):
+            try:
+                value = DataArtifact.model_validate(value)
+            except Exception:
+                try:
+                    return expected_type.model_validate(value)
+                except Exception:
+                    return None
+        if not isinstance(value, DataArtifact):
+            return None
+        card = value.aggregates.get("card")
+        if not isinstance(card, dict):
+            return None
+        projection = str(value.aggregates.get("projection") or "")
+        expected_projection = {
+            OrderCard: "order_card",
+            OrderListResult: "order_list",
+            AnalyticsCard: "analytics_card",
+        }.get(expected_type)
+        if expected_projection and projection and projection != expected_projection:
+            return None
+        try:
+            return expected_type.model_validate(card)
+        except Exception:
+            return None
+
+    @classmethod
+    def _time_range_for_question(cls, question: str) -> dict[str, str] | None:
+        # The semantic router normally stabilizes this value. This fallback keeps
+        # deterministic domain routing valid when called directly by tests.
+        if cls._contains(question, cls.MONTH_MARKERS):
+            today = datetime.now(timezone.utc).date()
+            return {
+                "field": "order_date",
+                "start": today.replace(day=1).isoformat(),
+                "end": today.isoformat(),
+            }
+        if cls._contains(question, cls.SUPPORTED_QUARTER_MARKERS):
+            today = datetime.now(timezone.utc).date()
+            month = ((today.month - 1) // 3) * 3 + 1
+            return {
+                "field": "order_date",
+                "start": today.replace(month=month, day=1).isoformat(),
+                "end": today.isoformat(),
+            }
+        return None
+
     @staticmethod
     def _contains(question, markers):
         return any(marker in question for marker in markers)
@@ -661,10 +814,11 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
             return "采购订单收料和入库的流程依据是什么？"
         return question
 
-    @staticmethod
-    def _latest(raw, tool_id, expected_type):
-        values = raw.get(tool_id, [])
-        if not values:
-            return None
-        value = values[-1]
-        return value if isinstance(value, expected_type) else None
+    @classmethod
+    def _latest(cls, raw, tool_id, expected_type):
+        values = cls._values_for(raw, tool_id)
+        for value in reversed(values):
+            coerced = cls._coerce_artifact(value, expected_type)
+            if coerced is not None:
+                return coerced
+        return None

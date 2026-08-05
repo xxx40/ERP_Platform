@@ -1,6 +1,7 @@
 import asyncio
 import json
 from uuid import uuid4
+from typing import Any
 
 from app.core.errors import AppError
 from app.workflow.presentation import converge, create_workflow_trace
@@ -306,6 +307,19 @@ class ChatOrchestrator:
             )
         return await self._save(clean_message, response)
 
+    @staticmethod
+    def _pending_argument_present(arguments: dict[str, Any], field: str) -> bool:
+        if arguments.get(field) not in (None, ""):
+            return True
+        filters = arguments.get("filters") or []
+        return any(
+            isinstance(item, dict)
+            and item.get("field") == field
+            and item.get("operator") == "eq"
+            and item.get("value") not in (None, "")
+            for item in filters
+        )
+
     async def _restore_context(
         self,
         session_id: str,
@@ -351,14 +365,18 @@ class ChatOrchestrator:
             )
             if (
                 len(missing) == 1
-                and not arguments.get(missing[0])
+                and not self._pending_argument_present(arguments, missing[0])
                 and message.strip()
                 and len(message.strip()) <= 200
             ):
                 arguments[missing[0]] = message.strip()
 
             registered = self.tool_registry.get(pending["target_tool_id"])
-            unresolved = [field for field in missing if not arguments.get(field)]
+            unresolved = [
+                field
+                for field in missing
+                if not self._pending_argument_present(arguments, field)
+            ]
             if not unresolved and registered.input_model is not None:
                 try:
                     validated = registered.input_model.model_validate(arguments)

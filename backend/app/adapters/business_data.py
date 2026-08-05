@@ -43,8 +43,15 @@ class BusinessDataAdapter:
         identity: IdentityContext,
         obligations: dict[str, Any],
     ) -> DataArtifact:
+        # Pydantic tool inputs contain optional keys with ``None`` values.
+        # Do not leak those transport-only nulls into an independently versioned
+        # gateway contract; only explicitly requested semantic fields cross the
+        # service boundary.
+        query_arguments = {
+            key: value for key, value in arguments.items() if value is not None
+        }
         payload = {
-            "query": {"dataset_id": dataset_id, **arguments},
+            "query": {"dataset_id": dataset_id, **query_arguments},
             "obligations": obligations,
         }
         try:

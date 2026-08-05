@@ -62,3 +62,55 @@ async def test_delegated_token_is_forwarded_only_as_a_header_and_not_serialized(
     assert delegated_token not in repr(identity)
     assert delegated_token not in identity.model_dump_json()
     assert "delegated_access_token" not in identity.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_optional_null_query_fields_are_not_forwarded_to_gateway() -> None:
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(httpx.Response(200, content=request.content).json())
+        return httpx.Response(
+            200,
+            json={
+                "dataset_id": "procurement.purchase_orders",
+                "schema_version": "1.0.0",
+                "columns": [],
+                "rows": [],
+                "aggregates": {},
+                "row_count": 0,
+                "truncated": False,
+                "freshness": "2026-08-05T00:00:00Z",
+                "connector_id": "purchase-orders",
+                "permission_scope": "tenant=t1;org=o1",
+                "source": "approved-enterprise-system",
+            },
+        )
+
+    adapter = BusinessDataAdapter(
+        SimpleNamespace(
+            business_data_api_base_url="https://business-data.test",
+            business_data_api_timeout_seconds=5,
+            business_data_api_key=None,
+        ),
+        transport=httpx.MockTransport(handler),
+    )
+    identity = IdentityContext(
+        user_id="u1",
+        tenant_id="t1",
+        org_code="o1",
+        roles=["analyst"],
+        auth_source="test",
+    )
+
+    await adapter.query(
+        "procurement.purchase_orders",
+        {"fields": ["order_number"], "comparison_mode": None},
+        identity,
+        {},
+    )
+
+    assert captured["query"] == {
+        "dataset_id": "procurement.purchase_orders",
+        "fields": ["order_number"],
+    }

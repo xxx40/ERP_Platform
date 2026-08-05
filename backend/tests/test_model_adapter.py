@@ -753,11 +753,11 @@ async def test_route_request_uses_semantic_contract_and_preserves_tool_order() -
                                 "evidence_need": True,
                                 "confidence": 0.97,
                                 "required_tools": [
-                                    "procurement.order.get",
+                                    "data.business.query",
                                     "knowledge.search",
                                 ],
                                 "tool_arguments": {
-                                    "procurement.order.get": {
+                                    "data.business.query": {
                                         "order_number": "PO202607001"
                                     },
                                     "knowledge.search": {
@@ -782,7 +782,7 @@ async def test_route_request_uses_semantic_contract_and_preserves_tool_order() -
     )
     tools = [
         {
-            "tool_id": "procurement.order.get",
+            "tool_id": "data.business.query",
             "description": "查询当前采购订单事实",
             "domain": "procurement",
             "input_schema": {"required": ["order_number"]},
@@ -803,7 +803,7 @@ async def test_route_request_uses_semantic_contract_and_preserves_tool_order() -
 
     assert result.request_kind == RequestKind.COMPOSITE
     assert result.required_tools == [
-        "procurement.order.get",
+        "data.business.query",
         "knowledge.search",
     ]
     prompt = json.dumps(captured_payload, ensure_ascii=False)
@@ -827,9 +827,9 @@ def test_semantic_route_plan_normalizes_provider_shape_drift() -> None:
             "data_needs": ["list of purchase orders not yet inbound"],
             "evidence_need": [],
             "confidence": 0.95,
-            "required_tools": ["procurement.orders.list"],
+            "required_tools": ["data.business.query"],
             "tool_arguments": {
-                "procurement.orders.list": {"inbound_state": "not_inbound"}
+                "data.business.query": {"inbound_state": "not_inbound"}
             },
             "summary": "query purchase orders not yet inbound",
         }
@@ -852,9 +852,9 @@ def test_semantic_route_plan_requires_order_number_for_single_order_status() -> 
             "data_needs": ["business_data"],
             "evidence_need": False,
             "confidence": 0.93,
-            "required_tools": ["data.procurement.purchase_orders.query"],
+            "required_tools": ["data.business.query"],
             "tool_arguments": {
-                "data.procurement.purchase_orders.query": {"limit": 100}
+                "data.business.query": {"limit": 100}
             },
             "missing_fields": [],
             "summary": "??????????",
@@ -862,7 +862,7 @@ def test_semantic_route_plan_requires_order_number_for_single_order_status() -> 
     )
 
     assert plan.request_kind == RequestKind.CLARIFY
-    assert plan.required_tools == ["procurement.order.get"]
+    assert plan.required_tools == []
     assert plan.tool_arguments == {}
     assert plan.missing_fields == ["order_number"]
     assert "PO202607001" in plan.clarification_question
@@ -880,7 +880,7 @@ def test_semantic_route_plan_uses_order_tool_when_identifier_is_present() -> Non
             "data_needs": ["business_data"],
             "evidence_need": False,
             "confidence": 0.97,
-            "required_tools": ["data.procurement.purchase_orders.query"],
+            "required_tools": ["data.business.query"],
             "tool_arguments": {},
             "missing_fields": [],
             "summary": "??????",
@@ -888,10 +888,11 @@ def test_semantic_route_plan_uses_order_tool_when_identifier_is_present() -> Non
     )
 
     assert plan.request_kind == RequestKind.BUSINESS_QUERY
-    assert plan.required_tools == ["procurement.order.get"]
-    assert plan.tool_arguments == {
-        "procurement.order.get": {"order_number": "PO202607001"}
-    }
+    assert plan.required_tools == ["data.business.query"]
+    assert plan.tool_arguments["data.business.query"]["dataset_id"] == "procurement.purchase_orders"
+    assert plan.tool_arguments["data.business.query"]["filters"] == [
+        {"field": "order_number", "operator": "eq", "value": "PO202607001"}
+    ]
     assert plan.missing_fields == []
 
 
@@ -907,9 +908,9 @@ def test_semantic_route_plan_does_not_treat_status_distribution_as_single_order(
             "data_needs": ["business_data"],
             "evidence_need": False,
             "confidence": 0.94,
-            "required_tools": ["data.procurement.purchase_orders.query"],
+            "required_tools": ["data.business.query"],
             "tool_arguments": {
-                "data.procurement.purchase_orders.query": {
+                "data.business.query": {
                     "dimensions": ["business_status"],
                     "measures": ["order_count"],
                 }
@@ -920,7 +921,7 @@ def test_semantic_route_plan_does_not_treat_status_distribution_as_single_order(
     )
 
     assert plan.request_kind == RequestKind.BUSINESS_QUERY
-    assert plan.required_tools == ["data.procurement.purchase_orders.query"]
+    assert plan.required_tools == ["data.business.query"]
     assert plan.missing_fields == []
 
 
@@ -936,9 +937,9 @@ def test_semantic_route_plan_normalizes_procurement_overview_to_analytics() -> N
             "data_needs": ["business_data"],
             "evidence_need": False,
             "confidence": 0.96,
-            "required_tools": ["data.procurement.purchase_orders.query"],
+            "required_tools": ["data.business.query"],
             "tool_arguments": {
-                "data.procurement.purchase_orders.query": {
+                "data.business.query": {
                     "measures": [
                         "order_count",
                         "purchase_amount",
@@ -957,15 +958,39 @@ def test_semantic_route_plan_normalizes_procurement_overview_to_analytics() -> N
     )
 
     assert plan.request_kind == RequestKind.BUSINESS_QUERY
-    assert plan.required_tools == ["procurement.analytics.query"]
-    assert plan.tool_arguments == {
-        "procurement.analytics.query": {
-            "period_type": "month",
-            "comparison_mode": "previous_period",
-            "breakdown_dimension": "category",
-            "period_key": "2026-07",
+    assert plan.required_tools == ["data.business.query"]
+    arguments = plan.tool_arguments["data.business.query"]
+    assert arguments["dataset_id"] == "procurement.purchase_orders"
+    assert arguments["measures"] == [
+        "order_count", "purchase_amount", "supplier_count", "average_order_amount"
+    ]
+    assert arguments["time_range"] == {"start": "2026-07-01", "end": "2026-07-31"}
+
+
+def test_semantic_route_plan_accepts_plain_procurement_overview_operation() -> None:
+    plan = SemanticRoutePlan.model_validate(
+        {
+            "request_kind": "business_query",
+            "domain": "procurement",
+            "operation": "overview",
+            "entity": "procurement",
+            "identifiers": {},
+            "filters": {},
+            "data_needs": ["business_data"],
+            "evidence_need": False,
+            "confidence": 0.95,
+            "required_tools": ["data.business.query"],
+            "tool_arguments": {"data.business.query": {}},
+            "missing_fields": [],
+            "summary": "procurement overview",
         }
-    }
+    )
+
+    arguments = plan.tool_arguments["data.business.query"]
+    assert arguments["dataset_id"] == "procurement.purchase_orders"
+    assert arguments["measures"] == [
+        "order_count", "purchase_amount", "supplier_count", "average_order_amount"
+    ]
 
 
 async def test_route_request_repair_prompt_includes_schema_and_validation_error() -> None:
@@ -985,9 +1010,9 @@ async def test_route_request_repair_prompt_includes_schema_and_validation_error(
                 "data_needs": ["business_data"],
                 "evidence_need": False,
                 "confidence": "definitely-high",
-                "required_tools": ["procurement.orders.list"],
+                "required_tools": ["data.business.query"],
                 "tool_arguments": {
-                    "procurement.orders.list": {"inbound_state": "not_inbound"}
+                    "data.business.query": {"inbound_state": "not_inbound"}
                 },
                 "missing_fields": [],
                 "clarification_question": None,
@@ -1004,9 +1029,9 @@ async def test_route_request_repair_prompt_includes_schema_and_validation_error(
                 "data_needs": ["business_data"],
                 "evidence_need": False,
                 "confidence": 0.95,
-                "required_tools": ["procurement.orders.list"],
+                "required_tools": ["data.business.query"],
                 "tool_arguments": {
-                    "procurement.orders.list": {"inbound_state": "not_inbound"}
+                    "data.business.query": {"inbound_state": "not_inbound"}
                 },
                 "missing_fields": [],
                 "clarification_question": None,
@@ -1023,7 +1048,7 @@ async def test_route_request_repair_prompt_includes_schema_and_validation_error(
     )
     tools = [
         {
-            "tool_id": "procurement.orders.list",
+            "tool_id": "data.business.query",
             "description": "list purchase orders",
             "domain": "procurement",
             "input_schema": {"required": []},
@@ -1066,7 +1091,7 @@ def test_semantic_route_plan_persists_single_order_clarification_target() -> Non
     )
 
     assert plan.request_kind == RequestKind.CLARIFY
-    assert plan.required_tools == ["procurement.order.get"]
+    assert plan.required_tools == []
     assert plan.tool_arguments == {}
     assert plan.missing_fields == ["order_number"]
 
@@ -1104,9 +1129,9 @@ def test_semantic_route_stabilizes_current_month_without_snapshot_key() -> None:
     plan = _semantic_plan_for_stability(
         operation="query_aggregate_metrics",
         entity="purchase_orders",
-        required_tools=["procurement.analytics.query"],
+        required_tools=["data.business.query"],
         tool_arguments={
-            "procurement.analytics.query": {
+            "data.business.query": {
                 "period_type": "quarter_to_date",
                 "period_key": "2026-08",
             }
@@ -1115,32 +1140,37 @@ def test_semantic_route_stabilizes_current_month_without_snapshot_key() -> None:
 
     plan.stabilize_with_question("本月采购经营数据概览", today=date(2026, 8, 4))
 
-    assert plan.tool_arguments["procurement.analytics.query"]["period_type"] == "month"
-    assert "period_key" not in plan.tool_arguments["procurement.analytics.query"]
+    arguments = plan.tool_arguments["data.business.query"]
+    assert arguments["time_range"] == {
+        "field": "order_date", "start": "2026-08-01", "end": "2026-08-04"
+    }
+    assert "period_key" not in arguments
 
 
 def test_semantic_route_stabilizes_previous_month_to_exact_period_key() -> None:
     plan = _semantic_plan_for_stability(
         operation="query_aggregate_metrics",
         entity="purchase_orders",
-        required_tools=["procurement.analytics.query"],
-        tool_arguments={"procurement.analytics.query": {"period_type": "month"}},
+        required_tools=["data.business.query"],
+        tool_arguments={"data.business.query": {"period_type": "month"}},
     )
 
     plan.stabilize_with_question("上个月采购金额是多少？", today=date(2026, 8, 4))
 
-    arguments = plan.tool_arguments["procurement.analytics.query"]
-    assert arguments["period_type"] == "month"
-    assert arguments["period_key"] == "2026-07"
+    arguments = plan.tool_arguments["data.business.query"]
+    assert arguments["time_range"] == {
+        "field": "order_date", "start": "2026-07-01", "end": "2026-07-31"
+    }
+    assert "period_key" not in arguments
 
 
 def test_semantic_route_stabilizes_supplier_year_over_year_analysis() -> None:
     plan = _semantic_plan_for_stability(
         operation="query_aggregate_metrics",
         entity="purchase_orders",
-        required_tools=["procurement.analytics.query"],
+        required_tools=["data.business.query"],
         tool_arguments={
-            "procurement.analytics.query": {
+            "data.business.query": {
                 "period_type": "month",
                 "period_key": "2026-08",
                 "comparison_mode": "previous_period",
@@ -1153,9 +1183,11 @@ def test_semantic_route_stabilizes_supplier_year_over_year_analysis() -> None:
         "本月各供应商采购金额同比排名", today=date(2026, 8, 4)
     )
 
-    arguments = plan.tool_arguments["procurement.analytics.query"]
-    assert arguments["period_type"] == "month"
-    assert arguments["breakdown_dimension"] == "supplier"
+    arguments = plan.tool_arguments["data.business.query"]
+    assert arguments["time_range"] == {
+        "field": "order_date", "start": "2026-08-01", "end": "2026-08-04"
+    }
+    assert arguments["dimensions"] == ["supplier_name"]
     assert arguments["comparison_mode"] == "year_over_year"
     assert "period_key" not in arguments
 
@@ -1164,16 +1196,18 @@ def test_semantic_route_stabilizes_waiting_inbound_as_not_inbound() -> None:
     plan = _semantic_plan_for_stability(
         operation="list_incomplete_inbound_orders",
         entity="purchase_orders",
-        required_tools=["procurement.orders.list"],
+        required_tools=["data.business.query"],
         tool_arguments={
-            "procurement.orders.list": {"inbound_state": "incomplete", "limit": 20}
+            "data.business.query": {"inbound_state": "incomplete", "limit": 20}
         },
     )
 
     plan.stabilize_with_question("有多少订单仍在等待入库？", today=date(2026, 8, 4))
 
     assert plan.operation == "list_not_inbound_orders"
-    assert plan.tool_arguments["procurement.orders.list"]["inbound_state"] == "not_inbound"
+    assert plan.tool_arguments["data.business.query"]["filters"] == [
+        {"field": "business_status", "operator": "eq", "value": "not_inbound"}
+    ]
 
 
 def test_semantic_route_restores_order_reason_question_to_composite() -> None:
@@ -1181,9 +1215,9 @@ def test_semantic_route_restores_order_reason_question_to_composite() -> None:
         operation="get_status",
         entity="purchase_order",
         identifiers={"order_number": "PO202607001"},
-        required_tools=["procurement.order.get"],
+        required_tools=["data.business.query"],
         tool_arguments={
-            "procurement.order.get": {"order_number": "PO202607001"}
+            "data.business.query": {"order_number": "PO202607001"}
         },
     )
 
@@ -1192,7 +1226,7 @@ def test_semantic_route_restores_order_reason_question_to_composite() -> None:
     )
 
     assert plan.request_kind == RequestKind.COMPOSITE
-    assert plan.required_tools == ["procurement.order.get", "knowledge.search"]
+    assert plan.required_tools == ["data.business.query", "knowledge.search"]
     assert plan.tool_arguments["knowledge.search"] == {
         "question": "采购订单入库流程及未入库原因处理规范",
         "mode": "supporting_evidence",
@@ -1204,9 +1238,9 @@ def test_semantic_route_stabilizes_analytics_policy_evidence_query() -> None:
         operation="query_aggregate_metrics",
         entity="purchase_orders",
         request_kind="composite",
-        required_tools=["procurement.analytics.query", "knowledge.search"],
+        required_tools=["data.business.query", "knowledge.search"],
         tool_arguments={
-            "procurement.analytics.query": {"period_type": "month"},
+            "data.business.query": {"period_type": "month"},
             "knowledge.search": {"query": "采购管理制度依据"},
         },
     )
@@ -1216,7 +1250,9 @@ def test_semantic_route_stabilizes_analytics_policy_evidence_query() -> None:
     )
 
     assert plan.request_kind == RequestKind.COMPOSITE
-    assert plan.tool_arguments["procurement.analytics.query"]["period_type"] == "quarter_to_date"
+    assert plan.tool_arguments["data.business.query"]["time_range"] == {
+        "field": "order_date", "start": "2026-07-01", "end": "2026-08-04"
+    }
     assert plan.tool_arguments["knowledge.search"] == {
         "question": "采购管理制度与流程依据",
         "mode": "supporting_evidence",

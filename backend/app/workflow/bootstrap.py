@@ -4,6 +4,8 @@ from pathlib import Path
 
 from app.agents.extensions import AgentExtensionRegistry
 from app.capabilities.catalog import CapabilityCatalog
+from app.business_data.catalog import BusinessDatasetCatalog
+from app.domains.procurement.embedded import EmbeddedProcurementBusinessDataAdapter
 from app.identity.providers import DevelopmentIdentityProvider
 from app.harness.contracts import PlatformSnapshotInfo
 from app.policy.providers import ConfigPolicyProvider
@@ -66,6 +68,15 @@ def build_agent_platform(
     policy_provider = policy_provider or ConfigPolicyProvider.from_yaml(
         Path(__file__).resolve().parents[2] / "config" / "policies.yaml"
     )
+    if business_data_adapter is None:
+        # Keep embedded/demo construction on the same model-facing contract as
+        # production: procurement is an internal connector, not fixed Tools.
+        business_data_adapter = EmbeddedProcurementBusinessDataAdapter(order_adapter)
+    if business_dataset_catalog is None:
+        catalog_path = Path(__file__).resolve().parents[3] / "purchase_order_service" / "datasets.yaml"
+        if catalog_path.is_file():
+            business_dataset_catalog = BusinessDatasetCatalog.from_yaml(catalog_path)
+
     tool_registry = ToolRegistry()
     node_registry = NodeHandlerRegistry()
     state_schema_registry = StateSchemaRegistry()
