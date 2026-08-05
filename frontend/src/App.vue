@@ -66,6 +66,7 @@ import type {
 
 const AnalyticsPanel = defineAsyncComponent(() => import("./AnalyticsPanel.vue"));
 const ResponseRenderer = defineAsyncComponent(() => import("./ResponseRenderer.vue"));
+const PlatformAdminView = defineAsyncComponent(() => import("./PlatformAdminView.vue"));
 
 const suggestionActions = [
   {
@@ -122,6 +123,12 @@ const loginRequired = ref(false);
 const authenticationError = ref("");
 const profileMenuOpen = ref(false);
 const debugIdentityId = ref(getDevelopmentIdentity().id);
+const activeView = ref<"chat" | "platform">("chat");
+const canOpenPlatformAdmin = computed(() => Boolean(
+  authContext.value?.permissions["platform.status.read"]
+  || authContext.value?.permissions["platform.data_source.create"]
+  || authContext.value?.permissions["platform.dataset.manage"],
+));
 
 const serviceLabel = computed(() => {
   if (!health.value) return "正在连接";
@@ -170,7 +177,11 @@ const formatGeneralAnswer = (value: string) => value
 const activeConversation = computed(() =>
   conversations.value.find((item) => item.session_id === sessionId.value),
 );
-const conversationTitle = computed(() => activeConversation.value?.title ?? entries.value[0]?.question ?? "新对话");
+const conversationTitle = computed(() => (
+  activeView.value === "platform"
+    ? "平台数据与能力管理"
+    : activeConversation.value?.title ?? entries.value[0]?.question ?? "新对话"
+));
 const recentConversations = computed(() => {
   const keyword = searchQuery.value.trim().toLowerCase();
   return conversations.value.filter((item) => (
@@ -292,6 +303,7 @@ async function loadConversation(targetSessionId: string) {
   ) return;
   historyLoading.value = true;
   historyError.value = "";
+  activeView.value = "chat";
   try {
     const detail = await getConversation(targetSessionId);
     entries.value = detail.interactions.map((interaction) => ({
@@ -417,6 +429,7 @@ function orderSummary(order: OrderCard) {
 }
 
 function startNewSession() {
+  activeView.value = "chat";
   entries.value = [];
   sessionId.value = "";
   localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -539,6 +552,14 @@ async function submitNegativeFeedback(entry: ChatEntry) {
       <button class="new-session-button" type="button" @click="startNewSession">
         <MessageSquarePlus :size="16" />发起新对话
       </button>
+      <button
+        v-if="canOpenPlatformAdmin"
+        :class="['platform-admin-button', { active: activeView === 'platform' }]"
+        type="button"
+        @click="activeView = 'platform'; sidebarOpen = false"
+      >
+        <Database :size="16" />平台数据与能力管理
+      </button>
 
       <label class="search-box">
         <Search :size="15" />
@@ -631,7 +652,12 @@ async function submitNegativeFeedback(entry: ChatEntry) {
         </div>
       </header>
 
-      <main ref="conversationElement" :class="['conversation', entries.length === 0 && 'conversation--empty']" aria-live="polite">
+      <PlatformAdminView
+        v-if="activeView === 'platform'"
+        :permissions="authContext?.permissions ?? {}"
+        :current-user-id="authContext?.user_id"
+      />
+      <main v-else ref="conversationElement" :class="['conversation', entries.length === 0 && 'conversation--empty']" aria-live="polite">
         <section v-if="entries.length === 0" class="welcome-state">
           <div class="welcome-mark"><Sparkles :size="22" /></div>
           <h1>{{ profileName }}，您好</h1>
@@ -856,8 +882,8 @@ async function submitNegativeFeedback(entry: ChatEntry) {
           </div>
         </article>
       </main>
-      <div v-if="networkError" class="network-error"><AlertTriangle :size="15" />{{ networkError }}</div>
-      <footer class="composer-zone">
+      <div v-if="activeView === 'chat' && networkError" class="network-error"><AlertTriangle :size="15" />{{ networkError }}</div>
+      <footer v-if="activeView === 'chat'" class="composer-zone">
         <div class="composer-suggestions" aria-label="常用问题">
           <button
             v-for="action in suggestionActions"

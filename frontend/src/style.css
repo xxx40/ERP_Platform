@@ -155,6 +155,8 @@ a { color: inherit; }
 .sidebar-close { display: none; margin-left: auto; border: 0; background: transparent; color: #60748a; }
 .new-session-button { width: 100%; height: 42px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #bdd9f2; background: #fff; color: #155f9e; border-radius: 7px; font-size: 14px; font-weight: 650; }
 .new-session-button:hover { border-color: #65aef4; color: #0b73da; background: #fafdff; }
+.platform-admin-button { width: 100%; min-height: 40px; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; background: transparent; color: #547089; border-radius: 7px; font-size: 13px; font-weight: 650; }
+.platform-admin-button:hover, .platform-admin-button.active { border-color: #c9dff2; color: #155f9e; background: #eef7ff; }
 .search-box { height: 34px; display: flex; align-items: center; gap: 7px; color: #8091a3; padding: 0 8px; }
 .search-box input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #263b50; font-size: 14px; }
 .search-box input::placeholder { color: #93a2b1; }
