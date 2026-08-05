@@ -193,6 +193,20 @@ class GenericOrchestratorModule:
                 "semantic_route": semantic_route,
                 "route": "reject",
             }
+        if not semantic_route.capability_available:
+            capability = semantic_route.unavailable_capability or "该业务数据查询能力"
+            return {
+                "understanding": understanding,
+                "semantic_route": semantic_route,
+                "error": NotFoundError(
+                    "UNSUPPORTED_CAPABILITY",
+                    (
+                        f"当前平台尚未接入「{capability}」所需的只读数据能力，"
+                        "因此无法返回实际业务数据。请由平台管理员接入并发布对应数据集后重试。"
+                    ),
+                ),
+                "route": "error",
+            }
         if semantic_route.request_kind == RequestKind.CLARIFY:
             return {
                 "understanding": understanding,
@@ -764,10 +778,33 @@ class GenericOrchestratorModule:
                     set(route.required_tools).difference(known_tool_ids)
                 )
                 if unknown_tool_ids:
-                    span["status"] = "invalid_tool_plan"
+                    span["status"] = "unsupported_capability"
                     span["unknown_tool_count"] = len(unknown_tool_ids)
-                    raise ModelOutputError()
-                self._validate_semantic_tool_contract(route, tool_domains)
+                    route = route.model_copy(
+                        update={
+                            "capability_available": False,
+                            "unavailable_capability": (
+                                route.unavailable_capability
+                                or self._capability_label(route)
+                            ),
+                            "required_tools": [],
+                            "tool_arguments": {},
+                        }
+                    )
+                elif (
+                    route.request_kind
+                    in {RequestKind.BUSINESS_QUERY, RequestKind.COMPOSITE}
+                    and not route.required_tools
+                    and route.capability_available
+                ):
+                    route = route.model_copy(
+                        update={
+                            "capability_available": False,
+                            "unavailable_capability": self._capability_label(route),
+                        }
+                    )
+                if route.capability_available:
+                    self._validate_semantic_tool_contract(route, tool_domains)
                 if (
                     route.confidence < 0.55
                     and not route.identifiers
@@ -797,8 +834,33 @@ class GenericOrchestratorModule:
             raise ModelOutputError() from exc
 
     @staticmethod
+    def _capability_label(route: SemanticRoutePlan) -> str:
+        value = (
+            route.unavailable_capability
+            or route.entity
+            or route.domain
+            or route.operation
+            or ""
+        ).strip()
+        normalized = value.lower().replace("-", "_").replace(" ", "_")
+        aliases = {
+            "inventory": "实时库存查询",
+            "stock": "实时库存查询",
+            "inventory_item": "实时库存查询",
+            "warehouse_inventory": "实时库存查询",
+            "sales_order": "销售订单查询",
+            "sales": "销售业务数据查询",
+            "finance": "财务业务数据查询",
+            "invoice": "发票数据查询",
+            "invoices": "发票数据查询",
+            "customer": "客户数据查询",
+            "customers": "客户数据查询",
+        }
+        return aliases.get(normalized, value or "该业务数据查询能力")
+
+    @staticmethod
     def _semantic_tool_descriptor(registered) -> dict[str, Any]:
-        """Keep the semantic router prompt small without weakening tool contracts."""
+        """Expose enough published Dataset semantics for reliable model selection."""
         schema = registered.spec.input_schema or {}
         properties = schema.get("properties", {})
         fields = {}
@@ -810,11 +872,12 @@ class GenericOrchestratorModule:
         return {
             "tool_id": registered.spec.tool_id,
             "name": registered.spec.name,
-            "purpose": registered.spec.description[:360],
+            "purpose": registered.spec.description[:1400],
             "domain": registered.spec.domain,
             "required": schema.get("required", []),
             "fields": fields,
-            "examples": list(registered.spec.examples[:3]),
+            "tags": list(registered.spec.tags[:16]),
+            "examples": list(registered.spec.examples[:6]),
         }
 
     @staticmethod

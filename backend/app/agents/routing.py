@@ -37,6 +37,8 @@ class SemanticRoutePlan(BaseModel):
     tool_arguments: dict[str, dict[str, Any]] = Field(default_factory=dict)
     missing_fields: list[str] = Field(default_factory=list, max_length=12)
     clarification_question: str | None = Field(default=None, max_length=500)
+    capability_available: bool = True
+    unavailable_capability: str | None = Field(default=None, max_length=200)
     summary: str = Field(min_length=1, max_length=500)
 
     @field_validator("identifiers", "filters", "tool_arguments", mode="before")
@@ -94,6 +96,15 @@ class SemanticRoutePlan(BaseModel):
         if self.request_kind == RequestKind.ACTION:
             self.required_tools = []
             self.tool_arguments = {}
+        if not self.capability_available:
+            if not (self.unavailable_capability or "").strip():
+                raise ValueError("unavailable capability requires a user-facing name")
+            self.required_tools = []
+            self.tool_arguments = {}
+            self.missing_fields = []
+            self.clarification_question = None
+            return self
+        self.unavailable_capability = None
         self._normalize_procurement_contracts()
         return self
 

@@ -1205,6 +1205,37 @@ async def test_invalid_semantic_tool_plan_never_falls_back_to_keyword_routing(
     assert "knowledge.retrieve" not in [span["name"] for span in trace["spans"]]
 
 
+async def test_model_fabricated_business_tool_converges_to_unsupported_capability(
+    tmp_path,
+) -> None:
+    plan = SemanticRoutePlan.model_validate(
+        {
+            "request_kind": "business_query",
+            "domain": "inventory",
+            "operation": "query_available_stock",
+            "entity": "inventory",
+            "data_needs": ["business_data"],
+            "confidence": 0.97,
+            "required_tools": ["inventory.stock.query"],
+            "tool_arguments": {"inventory.stock.query": {"sku": "SKU-001"}},
+            "summary": "\u67e5\u8be2\u5e93\u5b58\u6570\u636e\u3002",
+        }
+    )
+    orchestrator = build_orchestrator_with_model(
+        tmp_path,
+        SemanticRoutingModel(plan),
+    )
+
+    response = await orchestrator.handle("\u67e5\u8be2 SKU-001 \u5f53\u524d\u53ef\u7528\u5e93\u5b58")
+    run = await orchestrator.repository.get_workflow_run(response.request_id)
+
+    assert response.status == "not_found"
+    assert response.error.code == "UNSUPPORTED_CAPABILITY"
+    assert "\u5e93\u5b58" in response.error.message
+    assert "\u5c1a\u672a\u63a5\u5165" in response.error.message
+    assert run["tool_calls"] == []
+
+
 async def test_unconfigured_semantic_router_never_degrades_to_keyword_routing(
     tmp_path,
 ) -> None:
