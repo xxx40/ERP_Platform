@@ -110,6 +110,12 @@ class BusinessDataAdapter:
             "X-Tenant-Id": identity.tenant_id,
             "X-Org-Code": identity.org_code,
         }
+        # The platform service identity authenticates this hop. The separately
+        # carried delegated token lets the downstream enterprise connector apply
+        # the user's real WISE/ERP/SSO permissions without leaking it into traces,
+        # artifacts or model context.
+        if identity.delegated_access_token:
+            headers["X-Delegated-Access-Token"] = identity.delegated_access_token
         if self.service_identity is not None:
             headers.update(await self.service_identity.headers())
         elif self.api_key:

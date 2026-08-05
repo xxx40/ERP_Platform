@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any, TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -747,6 +748,181 @@ class GenericOrchestratorModule:
             "route": "tools",
         }
 
+    @staticmethod
+    def _repair_open_business_route(
+        route: SemanticRoutePlan,
+        known_tool_ids: set[str],
+    ) -> SemanticRoutePlan:
+        """Route open-ended read requests through the governed universal Tool.
+
+        The repair is intentionally semantic rather than SQL-oriented. It accepts
+        a logical business subject and bounded query fields only, and never applies
+        to action, general, or knowledge-only requests.
+        """
+        universal_id = "data.business.query"
+        if universal_id not in known_tool_ids:
+            return route
+        if route.request_kind not in {RequestKind.BUSINESS_QUERY, RequestKind.COMPOSITE}:
+            return route
+
+        route_domain = str(route.domain or "").strip().lower()
+        if route_domain in {"knowledge", "general"}:
+            return route
+        generic_domains = {"business", "business_data", "enterprise_data", "data"}
+        subject = (
+            route.entity
+            if route_domain in generic_domains
+            else route.domain or route.entity
+        )
+        subject_text = str(subject or "").strip()
+        if not subject_text:
+            return route
+
+        unknown = [
+            tool_id for tool_id in route.required_tools if tool_id not in known_tool_ids
+        ]
+        if (
+            route.required_tools
+            and not unknown
+            and universal_id not in route.required_tools
+        ):
+            return route
+
+        semantic_keys = {
+            "dataset_id",
+            "fields",
+            "measures",
+            "dimensions",
+            "filters",
+            "time_range",
+            "order_by",
+            "limit",
+        }
+        blocked_filter_fields = {
+            "sql",
+            "query",
+            "statement",
+            "connection",
+            "connection_string",
+            "dsn",
+            "table",
+            "schema",
+            "connector",
+            "connector_id",
+            "url",
+            "endpoint",
+        }
+        allowed_operators = {
+            "eq",
+            "ne",
+            "in",
+            "not_in",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "contains",
+            "starts_with",
+            "between",
+            "is_null",
+        }
+
+        def safe_filter_field(value: Any) -> str | None:
+            field = str(value or "").strip()
+            if not field or field.lower() in blocked_filter_fields:
+                return None
+            if not re.fullmatch(r"[0-9A-Za-z_\u4e00-\u9fff.]{1,128}", field):
+                return None
+            return field
+
+        filters: list[dict[str, Any]] = []
+
+        def append_filter(field: Any, value: Any) -> None:
+            safe_field = safe_filter_field(field)
+            if safe_field is None:
+                return
+            if isinstance(value, dict) and value.get("operator") in allowed_operators:
+                item = {
+                    "field": safe_field,
+                    "operator": value["operator"],
+                    "value": value.get("value"),
+                }
+            else:
+                item = {
+                    "field": safe_field,
+                    "operator": "in" if isinstance(value, (list, tuple, set)) else "eq",
+                    "value": list(value) if isinstance(value, (tuple, set)) else value,
+                }
+            if item not in filters:
+                filters.append(item)
+
+        original_arguments = dict(route.tool_arguments)
+        universal_arguments: dict[str, Any] = {}
+        provisional_payloads: list[dict[str, Any]] = []
+        existing_universal = original_arguments.get(universal_id)
+        if isinstance(existing_universal, dict):
+            provisional_payloads.append(existing_universal)
+        for tool_id in unknown:
+            payload = original_arguments.get(tool_id)
+            if isinstance(payload, dict):
+                provisional_payloads.append(payload)
+
+        for payload in provisional_payloads:
+            for key, value in payload.items():
+                if key in semantic_keys:
+                    if key == "filters" and isinstance(value, list):
+                        for item in value:
+                            if isinstance(item, dict):
+                                append_filter(item.get("field"), item)
+                    elif key != "filters":
+                        universal_arguments[key] = value
+                else:
+                    # A provisional domain Tool often emits identifiers such as
+                    # ``sku``. Convert these to governed semantic filters instead
+                    # of forwarding arbitrary top-level arguments.
+                    append_filter(key, value)
+
+        for field, value in route.identifiers.items():
+            append_filter(field, value)
+        for field, value in route.filters.items():
+            append_filter(field, value)
+        if filters:
+            universal_arguments["filters"] = filters
+
+        dataset_id = str(
+            universal_arguments.get("dataset_id") or subject_text
+        ).strip()
+        if not dataset_id:
+            return route
+        universal_arguments["dataset_id"] = dataset_id
+
+        required_tools: list[str] = []
+        for tool_id in route.required_tools:
+            replacement = (
+                tool_id
+                if tool_id in known_tool_ids and tool_id != universal_id
+                else universal_id
+            )
+            if replacement not in required_tools:
+                required_tools.append(replacement)
+        if universal_id not in required_tools:
+            required_tools.append(universal_id)
+        arguments = {
+            tool_id: dict(original_arguments.get(tool_id, {}))
+            for tool_id in required_tools
+            if tool_id != universal_id
+            and isinstance(original_arguments.get(tool_id), dict)
+        }
+        arguments[universal_id] = universal_arguments
+        return route.model_copy(
+            update={
+                "required_tools": required_tools,
+                "tool_arguments": arguments,
+                "capability_available": True,
+                "unavailable_capability": None,
+            }
+        )
+
     async def _semantic_route(self, question, memory, identity):
         method = getattr(self.model_adapter, "route_request", None)
         if method is None:
@@ -774,6 +950,7 @@ class GenericOrchestratorModule:
             ) as span:
                 route = await method(question, memory, tools)
                 route = SemanticRoutePlan.model_validate(route)
+                route = self._repair_open_business_route(route, known_tool_ids)
                 unknown_tool_ids = sorted(
                     set(route.required_tools).difference(known_tool_ids)
                 )
@@ -918,13 +1095,23 @@ class GenericOrchestratorModule:
             for tool_id in required
             if tool_domains.get(tool_id) != "knowledge"
         }
-        if business_domains and (
-            not route_domain or business_domains != {route_domain}
-        ):
-            # A procurement semantic plan cannot smuggle in a platform/other-domain
-            # tool. Authorization still runs later, but contract mismatch is a model
-            # output error rather than a permission decision.
-            raise ModelOutputError()
+        if business_domains:
+            # ``business_data`` is the governed universal read-only capability. It
+            # intentionally serves many semantic subjects (inventory, sales,
+            # production, procurement, ...), so its Tool domain must not be treated
+            # as the user's business domain. Domain-specific Tools still need an
+            # exact semantic match, which prevents unrelated capabilities from being
+            # smuggled into a route plan.
+            compatible = (
+                route_domain
+                and (
+                    route_domain == "business_data"
+                    or "business_data" in business_domains
+                    or business_domains == {route_domain}
+                )
+            )
+            if not compatible:
+                raise ModelOutputError()
 
     def _semantic_tool_plan(
         self,
@@ -960,6 +1147,34 @@ class GenericOrchestratorModule:
             for field, value in semantic_route.identifiers.items():
                 if field in properties and value not in (None, ""):
                     arguments.setdefault(field, value)
+            if tool_id == "data.business.query" and "dataset_id" in properties:
+                # The model may identify the business subject in ``entity`` or
+                # ``domain`` while omitting the transport-level dataset_id. Repair
+                # that omission here; it is still a semantic identifier, never SQL.
+                subject = (
+                    arguments.get("dataset_id")
+                    or semantic_route.entity
+                    or semantic_route.domain
+                )
+                if subject and str(subject).strip():
+                    arguments["dataset_id"] = str(subject).strip()
+                if not arguments.get("filters") and semantic_route.filters:
+                    normalized_filters = []
+                    for field, value in semantic_route.filters.items():
+                        if isinstance(value, dict) and "operator" in value:
+                            normalized_filters.append(
+                                {
+                                    "field": str(field),
+                                    "operator": value.get("operator"),
+                                    "value": value.get("value"),
+                                }
+                            )
+                        elif not isinstance(value, (dict, list, tuple, set)):
+                            normalized_filters.append(
+                                {"field": str(field), "operator": "eq", "value": value}
+                            )
+                    if normalized_filters:
+                        arguments["filters"] = normalized_filters
             if registered.spec.domain == "knowledge":
                 if "question" in properties:
                     arguments.setdefault("question", state["effective_message"])

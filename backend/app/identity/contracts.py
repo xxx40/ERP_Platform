@@ -12,6 +12,11 @@ class IdentityContext(BaseModel):
     roles: list[str] = Field(default_factory=list)
     auth_source: str
     trusted: bool = False
+    delegated_access_token: str | None = Field(
+        default=None,
+        exclude=True,
+        repr=False,
+    )
 
 
 class IdentityProvider(Protocol):

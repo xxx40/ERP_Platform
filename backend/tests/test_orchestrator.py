@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from app.adapters.purchase_order import MockPurchaseOrderAdapter
+from app.agents.orchestrator import GenericOrchestratorModule
 from app.agents.routing import RequestKind, SemanticRoutePlan
 from app.core.errors import ExternalServiceError, ServiceTimeoutError
 from app.repositories.conversation import ConversationRepository
@@ -1203,6 +1204,146 @@ async def test_invalid_semantic_tool_plan_never_falls_back_to_keyword_routing(
     assert response.status == "service_error"
     assert response.error.code == "MODEL_OUTPUT_INVALID"
     assert "knowledge.retrieve" not in [span["name"] for span in trace["spans"]]
+
+
+def test_open_business_route_repairs_unknown_tool_to_governed_semantic_query() -> None:
+    route = SemanticRoutePlan.model_validate(
+        {
+            "request_kind": "business_query",
+            "domain": "inventory",
+            "operation": "query_available_stock",
+            "entity": "inventory_item",
+            "identifiers": {"warehouse_code": "WH-A"},
+            "filters": {"quantity": {"operator": "gt", "value": 0}},
+            "data_needs": ["business_data"],
+            "confidence": 0.97,
+            "required_tools": ["inventory.stock.query"],
+            "tool_arguments": {
+                "inventory.stock.query": {
+                    "sku": "SKU-001",
+                    "sql": "SELECT * FROM inventory_items",
+                    "fields": ["sku", "quantity"],
+                    "limit": 50,
+                }
+            },
+            "summary": "Query authorized inventory data.",
+        }
+    )
+
+    repaired = GenericOrchestratorModule._repair_open_business_route(
+        route,
+        {"data.business.query"},
+    )
+
+    assert repaired.required_tools == ["data.business.query"]
+    assert repaired.capability_available is True
+    arguments = repaired.tool_arguments["data.business.query"]
+    assert arguments["dataset_id"] == "inventory"
+    assert arguments["fields"] == ["sku", "quantity"]
+    assert arguments["limit"] == 50
+    assert "sku" not in arguments
+    assert "sql" not in arguments
+    assert {item["field"] for item in arguments["filters"]} == {
+        "sku",
+        "warehouse_code",
+        "quantity",
+    }
+
+
+def test_open_business_route_normalizes_direct_universal_tool_arguments() -> None:
+    route = SemanticRoutePlan.model_validate(
+        {
+            "request_kind": "business_query",
+            "domain": "inventory",
+            "operation": "query",
+            "entity": "inventory_item",
+            "identifiers": {"sku": "SKU-001"},
+            "data_needs": ["business_data"],
+            "confidence": 0.96,
+            "required_tools": ["data.business.query"],
+            "tool_arguments": {
+                "data.business.query": {
+                    "warehouse_code": "WH-A",
+                    "sql": "SELECT secret_token FROM inventory_items",
+                    "limit": 10,
+                }
+            },
+            "summary": "Query authorized inventory data.",
+        }
+    )
+
+    repaired = GenericOrchestratorModule._repair_open_business_route(
+        route,
+        {"data.business.query"},
+    )
+
+    assert repaired.required_tools == ["data.business.query"]
+    arguments = repaired.tool_arguments["data.business.query"]
+    assert arguments["dataset_id"] == "inventory"
+    assert arguments["limit"] == 10
+    assert "sql" not in arguments
+    assert {item["field"] for item in arguments["filters"]} == {
+        "sku",
+        "warehouse_code",
+    }
+
+
+def test_open_business_route_repairs_empty_or_model_denied_plan() -> None:
+    route = SemanticRoutePlan.model_validate(
+        {
+            "request_kind": "business_query",
+            "domain": "business_data",
+            "operation": "query",
+            "entity": "inventory",
+            "identifiers": {"sku": "SKU-001"},
+            "data_needs": ["business_data"],
+            "confidence": 0.92,
+            "required_tools": [],
+            "tool_arguments": {},
+            "capability_available": False,
+            "unavailable_capability": "inventory query",
+            "summary": "Query authorized inventory data.",
+        }
+    )
+
+    repaired = GenericOrchestratorModule._repair_open_business_route(
+        route,
+        {"data.business.query"},
+    )
+
+    assert repaired.required_tools == ["data.business.query"]
+    assert repaired.capability_available is True
+    assert repaired.unavailable_capability is None
+    assert repaired.tool_arguments["data.business.query"] == {
+        "dataset_id": "inventory",
+        "filters": [{"field": "sku", "operator": "eq", "value": "SKU-001"}],
+    }
+
+
+@pytest.mark.parametrize("request_kind", [RequestKind.ACTION, RequestKind.KNOWLEDGE_QUERY])
+def test_open_business_route_never_repairs_actions_or_knowledge(
+    request_kind: RequestKind,
+) -> None:
+    route = SemanticRoutePlan.model_validate(
+        {
+            "request_kind": request_kind,
+            "domain": "inventory" if request_kind == RequestKind.ACTION else "knowledge",
+            "operation": "update" if request_kind == RequestKind.ACTION else "search",
+            "entity": "inventory",
+            "data_needs": ["business_data"],
+            "confidence": 0.95,
+            "required_tools": ["inventory.stock.query"],
+            "tool_arguments": {"inventory.stock.query": {"sku": "SKU-001"}},
+            "summary": "Do not repair this route.",
+        }
+    )
+
+    repaired = GenericOrchestratorModule._repair_open_business_route(
+        route,
+        {"data.business.query"},
+    )
+
+    assert repaired == route
 
 
 async def test_model_fabricated_business_tool_converges_to_unsupported_capability(

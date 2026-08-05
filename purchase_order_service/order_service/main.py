@@ -150,6 +150,7 @@ def create_app(
         user_id: str,
         tenant_id: str,
         org_code: str,
+        delegated_access_token: str | None = None,
     ) -> QueryIdentity:
         principal = service_principal(request)
         if not principal.can_delegate:
@@ -162,6 +163,7 @@ def create_app(
             tenant_id,
             org_code,
             permissions=principal.permissions,
+            delegated_access_token=delegated_access_token,
         )
 
     def get_connector_manager(request: Request) -> ConnectorManager:
@@ -377,6 +379,10 @@ def create_app(
         x_tenant_id: str = Header(alias="X-Tenant-Id"),
         x_org_code: str = Header(alias="X-Org-Code"),
         x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+        x_delegated_access_token: str | None = Header(
+            default=None,
+            alias="X-Delegated-Access-Token",
+        ),
     ) -> DataArtifact:
         require_delegation(request)
         try:
@@ -387,7 +393,13 @@ def create_app(
             return await run_in_threadpool(
                 get_data_manager(request).query,
                 query,
-                query_identity(request, x_user_id, x_tenant_id, x_org_code),
+                query_identity(
+                    request,
+                    x_user_id,
+                    x_tenant_id,
+                    x_org_code,
+                    x_delegated_access_token,
+                ),
                 obligations,
             )
         except DatasetNotFoundError as exc:

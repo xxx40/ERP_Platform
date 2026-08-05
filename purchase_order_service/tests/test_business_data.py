@@ -1,4 +1,6 @@
 import sqlite3
+
+import httpx
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ from order_service.connector_config import (
     ConnectorCatalog,
     ConnectorRoute,
     DatabaseConnectorConfig,
+    DataHttpConnectorConfig,
     FileMockConnectorConfig,
 )
 from order_service.data_contracts import (
@@ -23,6 +26,7 @@ from order_service.data_contracts import (
 )
 from order_service.data_gateway import (
     BusinessDataGateway,
+    DatasetNotFoundError,
     DatasetPermissionError,
     QueryIdentity,
     SemanticQueryError,
@@ -416,3 +420,301 @@ def test_dataset_scope_must_be_explicit_and_permission_is_enforced(tmp_path: Pat
             SemanticQuery(dataset_id="test.records", fields=["record_id"]),
             QueryIdentity("u1", "t1", "o1", permissions=frozenset()),
         )
+
+
+def test_auto_discovery_resolves_inventory_aliases_and_scopes_rows(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "inventory.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            """
+            CREATE TABLE inventory_items (
+                item_id TEXT,
+                sku TEXT,
+                quantity INTEGER,
+                warehouse_code TEXT,
+                tenant_id TEXT,
+                org_code TEXT,
+                updated_at TEXT,
+                secret_token TEXT
+            )
+            """
+        )
+        connection.executemany(
+            "INSERT INTO inventory_items VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                ("I1", "SKU-1", 12, "WH-A", "t1", "o1", "2026-08-01", "hidden"),
+                ("I2", "SKU-2", 8, "WH-B", "t1", "o2", "2026-08-02", "hidden"),
+                ("I3", "SKU-3", 4, "WH-A", "t2", "o1", "2026-08-03", "hidden"),
+            ],
+        )
+    monkeypatch.setenv("INVENTORY_DSN", f"sqlite:///{database.as_posix()}")
+    connectors = ConnectorCatalog(
+        version="inventory-discovery",
+        connectors=[
+            DatabaseConnectorConfig(
+                id="inventory-db",
+                type="database",
+                default=True,
+                dsn_env="INVENTORY_DSN",
+                auto_discovery=True,
+            )
+        ],
+    )
+    catalog = _gateway(tmp_path).dataset_catalog
+    catalog = catalog.model_copy(
+        update={
+            "datasets": [
+                catalog.datasets[0].model_copy(update={"connector_id": "inventory-db"})
+            ]
+        }
+    )
+    gateway = BusinessDataGateway(connectors, catalog, tmp_path)
+
+    identity = QueryIdentity("u1", "t1", "o1")
+    for subject in ("inventory", "stock", "\u5e93\u5b58\u660e\u7ec6"):
+        artifact = gateway.query(
+            SemanticQuery(
+                dataset_id=subject,
+                fields=["item_id", "sku", "quantity", "warehouse_code"],
+            ),
+            identity,
+        )
+        assert artifact.row_count == 1
+        assert artifact.rows == [["I1", "SKU-1", 12, "WH-A"]]
+
+    with pytest.raises(DatasetPermissionError):
+        gateway.query(
+            SemanticQuery(dataset_id="inventory", fields=["item_id", "secret_token"]),
+            identity,
+        )
+
+    other_org_artifact = gateway.query(
+        SemanticQuery(
+            dataset_id="inventory",
+            fields=["item_id", "sku", "quantity", "warehouse_code"],
+        ),
+        QueryIdentity("u2", "t1", "o2"),
+    )
+    assert other_org_artifact.rows == [["I2", "SKU-2", 8, "WH-B"]]
+    cache_scopes = {(key[0], key[1]) for key in gateway._discovered_datasets}
+    assert cache_scopes == {("t1", "o1"), ("t1", "o2")}
+
+
+def test_auto_discovery_rejects_ambiguous_or_unsafe_subjects(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "inventory.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE inventory_items (item_id TEXT, quantity INTEGER, tenant_id TEXT, org_code TEXT)"
+        )
+    monkeypatch.setenv("INVENTORY_DSN", f"sqlite:///{database.as_posix()}")
+    connectors = ConnectorCatalog(
+        version="inventory-discovery",
+        connectors=[
+            DatabaseConnectorConfig(
+                id="inventory-db",
+                type="database",
+                default=True,
+                dsn_env="INVENTORY_DSN",
+                auto_discovery=True,
+            )
+        ],
+    )
+    catalog = _gateway(tmp_path).dataset_catalog
+    catalog = catalog.model_copy(
+        update={
+            "datasets": [
+                catalog.datasets[0].model_copy(update={"connector_id": "inventory-db"})
+            ]
+        }
+    )
+    gateway = BusinessDataGateway(connectors, catalog, tmp_path)
+
+    with pytest.raises(DatasetNotFoundError):
+        gateway.query(
+            SemanticQuery(dataset_id="inventory; drop table inventory_items", fields=["item_id"]),
+            QueryIdentity("u1", "t1", "o1"),
+        )
+
+    assert gateway._table_match_score("\u5e93\u5b58", "inventory_items") >= 90
+
+
+
+def test_auto_discovery_requires_full_row_scope_for_shared_connector(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "shared-inventory.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE inventory_items (item_id TEXT, quantity INTEGER)"
+        )
+        connection.execute("INSERT INTO inventory_items VALUES ('I1', 12)")
+    monkeypatch.setenv("SHARED_INVENTORY_DSN", f"sqlite:///{database.as_posix()}")
+    connectors = ConnectorCatalog(
+        version="shared-inventory",
+        connectors=[
+            DatabaseConnectorConfig(
+                id="shared-inventory-db",
+                type="database",
+                default=True,
+                dsn_env="SHARED_INVENTORY_DSN",
+                auto_discovery=True,
+                routes=[
+                    ConnectorRoute(tenant_id="t1", org_code="o1"),
+                    ConnectorRoute(tenant_id="t2", org_code="o2"),
+                ],
+            )
+        ],
+    )
+    catalog = _gateway(tmp_path).dataset_catalog
+    catalog = catalog.model_copy(
+        update={
+            "datasets": [
+                catalog.datasets[0].model_copy(
+                    update={"connector_id": "shared-inventory-db"}
+                )
+            ]
+        }
+    )
+    gateway = BusinessDataGateway(connectors, catalog, tmp_path)
+
+    with pytest.raises(DatasetPermissionError, match="tenant and organization"):
+        gateway.query(
+            SemanticQuery(dataset_id="inventory", fields=["item_id", "quantity"]),
+            QueryIdentity("u1", "t1", "o1"),
+        )
+
+
+def test_auto_discovery_does_not_hide_dataset_construction_errors(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database = tmp_path / "inventory-errors.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE inventory_items (item_id TEXT, tenant_id TEXT, org_code TEXT)"
+        )
+    monkeypatch.setenv("INVENTORY_ERROR_DSN", f"sqlite:///{database.as_posix()}")
+    connectors = ConnectorCatalog(
+        version="inventory-errors",
+        connectors=[
+            DatabaseConnectorConfig(
+                id="inventory-db",
+                type="database",
+                default=True,
+                dsn_env="INVENTORY_ERROR_DSN",
+                auto_discovery=True,
+            )
+        ],
+    )
+    catalog = _gateway(tmp_path).dataset_catalog
+    catalog = catalog.model_copy(
+        update={
+            "datasets": [
+                catalog.datasets[0].model_copy(update={"connector_id": "inventory-db"})
+            ]
+        }
+    )
+    gateway = BusinessDataGateway(connectors, catalog, tmp_path)
+
+    def fail_dataset_construction(_logical_id, _connector, _table):
+        raise ValueError("invalid discovered dataset contract")
+
+    monkeypatch.setattr(gateway, "_dataset_from_table", fail_dataset_construction)
+
+    with pytest.raises(ValueError, match="invalid discovered dataset contract"):
+        gateway.query(
+            SemanticQuery(dataset_id="inventory", fields=["item_id"]),
+            QueryIdentity("u1", "t1", "o1"),
+        )
+
+
+def test_http_business_connector_forwards_delegated_identity_token(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("REMOTE_DATA_BASE_URL", "https://erp-data.test")
+    connectors = ConnectorCatalog(
+        version="remote-data",
+        connectors=[
+            DataHttpConnectorConfig(
+                id="remote-inventory",
+                type="data_http",
+                default=True,
+                base_url_env="REMOTE_DATA_BASE_URL",
+            )
+        ],
+    )
+    catalog = DatasetCatalog(
+        version="remote-data",
+        datasets=[
+            DatasetSpec(
+                id="inventory",
+                name="Inventory",
+                description="Authorized remote inventory data",
+                domain="inventory",
+                connector_id="remote-inventory",
+                table="inventory_items",
+                scope_mode="global",
+                fields=[
+                    DatasetField(
+                        name="sku",
+                        source_column="sku",
+                        data_type="string",
+                        label="SKU",
+                    )
+                ],
+            )
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    def fake_post(url, *, headers, json, timeout):
+        captured.update(
+            {"url": url, "headers": headers, "json": json, "timeout": timeout}
+        )
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "dataset_id": "inventory",
+                "schema_version": "1.0.0",
+                "columns": [
+                    {
+                        "name": "sku",
+                        "label": "SKU",
+                        "data_type": "string",
+                        "semantic_type": "dimension",
+                    }
+                ],
+                "rows": [["SKU-001"]],
+                "aggregates": {},
+                "row_count": 1,
+                "truncated": False,
+                "freshness": "2026-08-05T00:00:00Z",
+                "connector_id": "remote-inventory",
+                "permission_scope": "source-system-user",
+                "source": "erp",
+            },
+        )
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    gateway = BusinessDataGateway(connectors, catalog, tmp_path)
+    delegated_token = "source-system-user-token"
+
+    artifact = gateway.query(
+        SemanticQuery(dataset_id="inventory", fields=["sku"]),
+        QueryIdentity(
+            "u1",
+            "t1",
+            "o1",
+            delegated_access_token=delegated_token,
+        ),
+    )
+
+    assert artifact.rows == [["SKU-001"]]
+    headers = captured["headers"]
+    assert isinstance(headers, dict)
+    assert headers["X-Delegated-Access-Token"] == delegated_token
+    assert delegated_token not in str(captured["json"])

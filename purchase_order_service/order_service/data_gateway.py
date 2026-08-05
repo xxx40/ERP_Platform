@@ -4,14 +4,16 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any
 
 import httpx
 from sqlalchemy import MetaData, Table, and_, create_engine, func, not_, or_, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
-from order_service.connector_config import ConnectorCatalog
+from order_service.connector_config import ConnectorCatalog, DatabaseConnectorConfig
 from order_service.connectors import (
     ConnectorAdapterRegistry,
     ConnectorConfigurationError,
@@ -21,6 +23,7 @@ from order_service.data_contracts import (
     DataArtifact,
     DataColumn,
     DatasetCatalog,
+    DatasetField,
     DatasetMetric,
     DatasetSpec,
     PolicyObligations,
@@ -47,6 +50,7 @@ class QueryIdentity:
     tenant_id: str
     org_code: str
     permissions: frozenset[str] = frozenset({"business.data.read"})
+    delegated_access_token: str | None = None
 
 
 class BusinessDataGateway:
@@ -74,6 +78,7 @@ class BusinessDataGateway:
             item.id: item for item in connector_catalog.connectors if item.enabled
         }
         self._engines: dict[str, Engine] = {}
+        self._discovered_datasets: dict[tuple[str, str, str], DatasetSpec] = {}
         for dataset in self._datasets.values():
             if dataset.connector_id not in self._connectors:
                 raise ConnectorConfigurationError(
@@ -118,6 +123,8 @@ class BusinessDataGateway:
     ) -> DataArtifact:
         dataset = self._datasets.get(query.dataset_id)
         if dataset is None:
+            dataset = self._resolve_discovered_dataset(query.dataset_id, identity)
+        if dataset is None:
             raise DatasetNotFoundError(query.dataset_id)
         if dataset.required_permission not in identity.permissions:
             raise DatasetPermissionError(
@@ -129,6 +136,344 @@ class BusinessDataGateway:
         if self._transport(connector) == "http":
             return self._query_http(connector, query, identity, effective_obligations)
         return self._query_sql(dataset, query, identity, effective_obligations)
+
+    def _resolve_discovered_dataset(
+        self,
+        logical_id: str,
+        identity: QueryIdentity,
+    ) -> DatasetSpec | None:
+        """Resolve an unregistered business subject from approved DB metadata.
+
+        This is deliberately a gateway concern, not an LLM concern. The model
+        can name a business subject such as ``inventory``; only visible tables
+        from an enabled ``DatabaseConnectorConfig`` are candidates, and the
+        resulting DatasetSpec still goes through the same semantic compiler,
+        row scope and field sensitivity checks as a published dataset.
+        """
+
+        if not self._is_safe_logical_subject(logical_id):
+            return None
+        cache_key = (
+            identity.tenant_id,
+            identity.org_code,
+            self._normalize_identifier(logical_id),
+        )
+        cached = self._discovered_datasets.get(cache_key)
+        if cached is not None:
+            return cached
+
+        matches: list[tuple[int, bool, DatasetSpec]] = []
+        for connector in self._auto_discovery_connectors(identity):
+            metadata = MetaData()
+            try:
+                metadata.reflect(bind=self._engine(connector.id), views=True)
+            except SQLAlchemyError:
+                # A connector that is configured but temporarily unavailable is
+                # not allowed to turn into an arbitrary connection attempt. Do not
+                # swallow programming or DatasetSpec validation errors here.
+                continue
+            for table in metadata.tables.values():
+                score = self._table_match_score(logical_id, table.name)
+                if score <= 0:
+                    continue
+                dataset = self._dataset_from_table(logical_id, connector, table)
+                matches.append((score, bool(connector.default), dataset))
+
+        if not matches:
+            return None
+        matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        best_score = matches[0][0]
+        best = [item for item in matches if item[0] == best_score]
+        if len(best) > 1:
+            defaults = [item for item in best if item[1]]
+            if len(defaults) == 1:
+                selected = defaults[0][2]
+            else:
+                # Do not guess between two equally named enterprise tables.
+                return None
+        else:
+            selected = best[0][2]
+        self._discovered_datasets[cache_key] = selected
+        return selected
+
+    def _auto_discovery_connectors(
+        self,
+        identity: QueryIdentity,
+    ) -> list[DatabaseConnectorConfig]:
+        connectors: list[DatabaseConnectorConfig] = []
+        for connector in self._connectors.values():
+            if not isinstance(connector, DatabaseConnectorConfig):
+                continue
+            if not connector.auto_discovery:
+                continue
+            try:
+                self._assert_connector_scope(connector, identity)
+            except DatasetPermissionError:
+                continue
+            connectors.append(connector)
+        return sorted(connectors, key=lambda item: (not item.default, item.id))
+
+    def _dataset_from_table(
+        self,
+        logical_id: str,
+        connector: DatabaseConnectorConfig,
+        table: Table,
+    ) -> DatasetSpec:
+        columns = list(table.columns)
+        if not columns:
+            raise ValueError("auto-discovered table has no columns")
+        field_names = {column.name for column in columns}
+        tenant_field = self._first_column(field_names, "tenant_id", "tenant", "tenant_code")
+        org_field = self._first_column(
+            field_names, "org_code", "organization_code", "org_id", "organization_id"
+        )
+        owner_field = self._first_column(
+            field_names, "owner_user_id", "owner_id", "created_by", "user_id"
+        )
+        access_scope_field = self._first_column(
+            field_names, "access_scope", "visibility", "data_scope"
+        )
+        connector_routes = {
+            (route.tenant_id, route.org_code) for route in connector.routes
+        }
+        if not (tenant_field and org_field) and len(connector_routes) != 1:
+            raise DatasetPermissionError(
+                "auto-discovery requires tenant and organization columns unless "
+                "the connector is dedicated to exactly one tenant/organization route"
+            )
+
+        fields: list[DatasetField] = []
+        selectable_names: list[str] = []
+        dimension_names: list[str] = []
+        numeric_names: list[str] = []
+        time_field: str | None = None
+        for column in columns:
+            name = str(column.name)
+            restricted = self._is_restricted_column(name)
+            data_type = self._column_data_type(column)
+            semantic_type = (
+                "time" if data_type in {"date", "datetime"} else
+                "measure_source" if data_type in {"integer", "number"} and not restricted
+                else "security_scope" if restricted else "dimension"
+            )
+            allowed_operators = ["eq", "ne", "in", "not_in"]
+            if data_type == "string":
+                allowed_operators.extend(["contains", "starts_with"])
+            elif data_type in {"integer", "number", "date", "datetime"}:
+                allowed_operators.extend(["gt", "gte", "lt", "lte", "between"])
+            field = DatasetField(
+                name=name,
+                source_column=name,
+                data_type=data_type,
+                label=name.replace("_", " ").title(),
+                aliases=self._column_aliases(name),
+                description="Auto-discovered from an approved business database table.",
+                semantic_type=semantic_type,
+                sensitivity="restricted" if restricted else "internal",
+                selectable=not restricted,
+                allowed_operators=allowed_operators,
+            )
+            fields.append(field)
+            if not restricted:
+                selectable_names.append(name)
+                if semantic_type == "dimension":
+                    dimension_names.append(name)
+                if data_type in {"integer", "number"}:
+                    numeric_names.append(name)
+                if time_field is None and (
+                    data_type in {"date", "datetime"}
+                    or any(token in name.lower() for token in ("date", "time", "created", "updated"))
+                ):
+                    time_field = name
+
+        metrics: list[DatasetMetric] = []
+        count_field = next(
+            (name for name in selectable_names if name.lower() in {"id", "record_id", "order_id", "item_id"}),
+            selectable_names[0] if selectable_names else None,
+        )
+        if count_field:
+            metrics.append(
+                DatasetMetric(
+                    name="row_count",
+                    label="Row count",
+                    description="Number of rows in the authorized scope.",
+                    aggregation="count",
+                    field=count_field,
+                    allowed_dimensions=dimension_names[:24],
+                )
+            )
+        for name in numeric_names[:12]:
+            metric_name = f"{name}_sum"
+            if metric_name in field_names:
+                continue
+            metrics.append(
+                DatasetMetric(
+                    name=metric_name,
+                    label=f"{name.replace('_', ' ').title()} total",
+                    description=f"Sum of {name} in the authorized scope.",
+                    aggregation="sum",
+                    field=name,
+                    allowed_dimensions=dimension_names[:24],
+                )
+            )
+
+        scope_mode = "tenant_org" if tenant_field and org_field else "tenant" if tenant_field else "global"
+        return DatasetSpec(
+            id=logical_id.strip(),
+            version="auto-discovered-1.0.0",
+            name=f"Auto-discovered {logical_id}",
+            description=(
+                "Read-only semantic dataset discovered from an approved database "
+                f"table {table.fullname}."
+            ),
+            domain=self._infer_domain(logical_id, table.name),
+            connector_id=connector.id,
+            table=table.name,
+            schema=table.schema,
+            enabled=True,
+            required_permission="business.data.read",
+            scope_mode=scope_mode,
+            tenant_field=tenant_field,
+            org_field=org_field,
+            owner_field=owner_field,
+            access_scope_field=access_scope_field,
+            time_field=time_field,
+            max_rows=500,
+            tags=self._logical_aliases(logical_id),
+            examples=[],
+            fields=fields,
+            metrics=metrics,
+        )
+
+    @staticmethod
+    def _normalize_identifier(value: str) -> str:
+        return re.sub(
+            r"[^0-9a-zA-Z_\u4e00-\u9fff]+",
+            "_",
+            str(value).strip().lower(),
+        ).strip("_")
+
+    @classmethod
+    def _table_match_score(cls, logical_id: str, table_name: str) -> int:
+        query = cls._normalize_identifier(logical_id)
+        table = cls._normalize_identifier(table_name)
+        if not query or not table:
+            return 0
+        if query == table:
+            return 100
+
+        # Subject names can be English, Chinese, or a user-friendly phrase such
+        # as "????". Normalize both sides to a small canonical vocabulary
+        # before matching, while retaining token/prefix matching for future
+        # domains that are not listed here. This is discovery guidance only; the
+        # table still has to come from an approved connector and pass scope checks.
+        alias_groups = {
+            "inventory": {
+                "inventory", "inventories", "inventory_items", "stock",
+                "stocks", "stock_items", chr(0x5e93) + chr(0x5b58),
+                chr(0x5e93) + chr(0x5b58) + chr(0x660e) + chr(0x7ec6),
+                chr(0x5b58) + chr(0x8d27),
+            },
+            "sales": {
+                "sales", "sale", "sales_orders", "sale_orders",
+                chr(0x9500) + chr(0x552e),
+                chr(0x9500) + chr(0x552e) + chr(0x8ba2) + chr(0x5355),
+            },
+            "production": {
+                "production", "production_orders", "manufacturing",
+                "work_orders", chr(0x751f) + chr(0x4ea7),
+                chr(0x751f) + chr(0x4ea7) + chr(0x8ba2) + chr(0x5355),
+            },
+            "procurement": {
+                "procurement", "purchase_orders", "purchases",
+                chr(0x91c7) + chr(0x8d2d),
+                chr(0x91c7) + chr(0x8d2d) + chr(0x8ba2) + chr(0x5355),
+            },
+        }
+
+        def canonical(value: str) -> str:
+            for name, aliases in alias_groups.items():
+                if value in aliases:
+                    return name
+            return value
+
+        query_subject = canonical(query)
+        table_subject = canonical(table)
+        if query_subject == table_subject and query_subject in alias_groups:
+            return 90
+
+        candidates = alias_groups.get(query_subject, {query})
+        if table in candidates:
+            return 90
+        for candidate in candidates:
+            if table.startswith(candidate + "_") or candidate.startswith(table + "_"):
+                return 75
+        query_tokens = set(query.split("_"))
+        table_tokens = set(table.split("_"))
+        return 55 if query_tokens and query_tokens <= table_tokens else 0
+
+    @classmethod
+    def _is_safe_logical_subject(cls, value: str) -> bool:
+        raw = str(value).strip()
+        if not raw or len(raw) > 160:
+            return False
+        if not re.fullmatch(r"[0-9a-zA-Z_\u4e00-\u9fff .-]+", raw):
+            return False
+        tokens = set(cls._normalize_identifier(raw).split("_"))
+        sql_control_words = {
+            "select", "insert", "update", "delete", "drop", "alter",
+            "create", "truncate", "grant", "revoke", "merge", "call", "exec",
+        }
+        return not bool(tokens & sql_control_words)
+
+    @staticmethod
+    def _first_column(names: set[str], *candidates: str) -> str | None:
+        lowered = {name.lower(): name for name in names}
+        for candidate in candidates:
+            if candidate in lowered:
+                return lowered[candidate]
+        return None
+
+    @staticmethod
+    def _is_restricted_column(name: str) -> bool:
+        normalized = name.lower()
+        return (
+            normalized in {
+                "tenant_id", "tenant", "tenant_code", "org_code", "org_id",
+                "organization_id", "organization_code", "owner_user_id", "owner_id",
+                "created_by", "user_id", "access_scope", "visibility", "data_scope",
+            }
+            or any(token in normalized for token in ("password", "secret", "token", "api_key"))
+        )
+
+    @staticmethod
+    def _column_data_type(column: Any) -> str:
+        value = str(column.type).lower()
+        if "bool" in value:
+            return "boolean"
+        if "date" in value and "time" not in value:
+            return "date"
+        if any(token in value for token in ("datetime", "timestamp", "time")):
+            return "datetime"
+        if any(token in value for token in ("int", "bigint", "smallint")):
+            return "integer"
+        if any(token in value for token in ("decimal", "numeric", "float", "real", "double")):
+            return "number"
+        return "string"
+
+    @staticmethod
+    def _column_aliases(name: str) -> list[str]:
+        words = name.replace("_", " ").split()
+        return list(dict.fromkeys([" ".join(words), "".join(words)]))[:8]
+
+    @classmethod
+    def _logical_aliases(cls, logical_id: str) -> list[str]:
+        return list(dict.fromkeys([logical_id, cls._normalize_identifier(logical_id)]))[:8]
+
+    @staticmethod
+    def _infer_domain(logical_id: str, table_name: str) -> str:
+        value = logical_id or table_name
+        return re.sub(r"[^0-9a-zA-Z_\u4e00-\u9fff]+", "_", value.lower()).strip("_") or "business"
 
     def introspect(self, connector_id: str) -> dict[str, Any]:
         connector = self._connectors.get(connector_id)
@@ -577,6 +922,8 @@ class BusinessDataGateway:
             "X-Tenant-Id": identity.tenant_id,
             "X-Org-Code": identity.org_code,
         }
+        if identity.delegated_access_token:
+            headers["X-Delegated-Access-Token"] = identity.delegated_access_token
         if bundled_api_token:
             headers["Authorization"] = f"Bearer {bundled_api_token}"
         elif connector.api_key_env:

@@ -106,6 +106,14 @@ def test_business_data_tool_exposes_governed_metric_meaning() -> None:
     assert "formula: sum(amount_with_tax)" in description
     assert "raw SQL and inferred formulas are not accepted" in description
 
+    universal = registry.get("data.business.query").spec
+    assert universal.risk_level == "read_only"
+    assert universal.required_permission == "business.data.read"
+    assert universal.input_schema["required"] == ["dataset_id"]
+    assert "approved read-only database connector" in universal.description
+    assert "Raw SQL, arbitrary connections and writes are never accepted" in universal.description
+    assert any("SKU-001" in example for example in universal.examples)
+
 
 def _register(
     registry: ToolRegistry,

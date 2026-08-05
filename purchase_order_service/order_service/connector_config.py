@@ -96,14 +96,17 @@ class SqlAlchemyConnectorConfig(ConnectorBase):
 class DatabaseConnectorConfig(ConnectorBase):
     """Generic read-only database connection used by DatasetCatalog.
 
-    Domain queries and field mappings belong to DatasetSpec, so this contract
-    intentionally has no purchase-specific SQL fields.
+    Domain queries and field mappings belong to DatasetSpec. When
+    ``auto_discovery`` is enabled, the semantic gateway may also discover a
+    matching table from this approved connection; it still emits only bounded
+    parameterized SELECT statements and applies identity scope filters.
     """
 
     type: Literal["database"]
     dsn_env: str | None = None
     dsn_secret_id: str | None = None
     health_query: str = "SELECT 1"
+    auto_discovery: bool = False
 
     @model_validator(mode="after")
     def validate_dsn_reference(self) -> "DatabaseConnectorConfig":

@@ -333,12 +333,12 @@ async def test_platform_admin_can_publish_and_rollback_plugin_snapshot(tmp_path)
 
     assert validated.status_code == 200
     assert validated.json()["graph_count"] == 1
-    assert validated.json()["capability_count"] == 4
+    assert validated.json()["capability_count"] == 5
     assert published.status_code == 200
-    assert skills_after_publish.json()["count"] == 4
+    assert skills_after_publish.json()["count"] == 5
     assert versions.json()["items"][0]["action"] == "publish"
     assert rolled_back.status_code == 200
-    assert skills_after_rollback.json()["count"] == 5
+    assert skills_after_rollback.json()["count"] == 6
     await app.state.repository.close()
 
 

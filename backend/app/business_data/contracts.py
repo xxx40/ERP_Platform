@@ -52,6 +52,18 @@ class SemanticDataQueryInput(BaseModel):
     limit: int = Field(default=100, ge=1, le=5000)
 
 
+class UniversalBusinessDataQueryInput(SemanticDataQueryInput):
+    """Semantic query for any approved read-only business dataset.
+
+    ``dataset_id`` is a logical business subject (for example ``inventory`` or
+    ``sales``), not a SQL fragment. The gateway resolves it against published
+    semantic datasets first and, for an explicitly approved database connector,
+    may safely discover a matching table.
+    """
+
+    dataset_id: str = Field(min_length=1, max_length=160)
+
+
 class DataColumn(BaseModel):
     name: str
     label: str

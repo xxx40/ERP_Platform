@@ -132,4 +132,5 @@ class JwtIdentityProvider:
             roles=[item.strip() for item in resolved_roles],
             auth_source="oidc_jwt",
             trusted=True,
+            delegated_access_token=bearer_token,
         )
