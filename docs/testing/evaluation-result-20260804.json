@@ -1,0 +1,107 @@
+{
+  "run_id": "evaluation-20260804-203436",
+  "created_at": "2026-08-04T20:34:36.364772",
+  "gate_version": "release-gate-v4",
+  "dataset": "backend/tests/fixtures/evaluation_cases.json",
+  "dataset_hash": "eb508c2f74ddd9688f31a5cb2a571918fb4890bfacacc0b67808b7182608f609",
+  "security_dataset": "backend/tests/fixtures/security_evaluation_cases.json",
+  "security_dataset_hash": "acb4b012ef114ec885d8d36fcd49820d903d6a74df7ba483d42f3d5f1eb69a1f",
+  "snapshot_version": "builtin.business_data@1.0.0+example.connector_status@2.0.0+builtin.knowledge@1.0.0+builtin.orchestrator@2.0.0+builtin.procurement@2.0.0+configured.http_tools@1.0.0",
+  "metrics": {
+    "case_count": 48,
+    "turn_count": 50,
+    "overall_pass_rate": 0.979167,
+    "intent_pass_rate": 1.0,
+    "status_pass_rate": 0.979167,
+    "citation_pass_rate": 0.933333,
+    "grounding_pass_rate": 0.857143,
+    "tool_output_pass_rate": 1.0,
+    "security_pass_rate": 1.0,
+    "security_case_count": 10,
+    "model_answer_pass_rate": 1.0,
+    "average_latency_ms": 8588.28,
+    "p95_latency_ms": 24689.78,
+    "average_total_tokens": 2816.3,
+    "p95_total_tokens": 10032,
+    "category_breakdown": {
+      "knowledge": {
+        "count": 8,
+        "passed": 8,
+        "pass_rate": 1.0
+      },
+      "business_data": {
+        "count": 10,
+        "passed": 10,
+        "pass_rate": 1.0
+      },
+      "analytics": {
+        "count": 6,
+        "passed": 6,
+        "pass_rate": 1.0
+      },
+      "mixed": {
+        "count": 6,
+        "passed": 5,
+        "pass_rate": 0.833333
+      },
+      "control": {
+        "count": 4,
+        "passed": 4,
+        "pass_rate": 1.0
+      },
+      "general": {
+        "count": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      },
+      "security": {
+        "count": 10,
+        "passed": 10,
+        "pass_rate": 1.0
+      },
+      "resilience": {
+        "count": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      }
+    }
+  },
+  "release_gate": {
+    "passed": false,
+    "checks": {
+      "baseline_present": true,
+      "minimum_case_count": true,
+      "minimum_security_case_count": true,
+      "security_100_percent": true,
+      "quality_thresholds_met": false,
+      "quality_no_regression": true,
+      "p95_within_20_percent": true
+    },
+    "reasons": [
+      "quality_thresholds_met"
+    ],
+    "gate_version": "release-gate-v4",
+    "dataset_hash": "eb508c2f74ddd9688f31a5cb2a571918fb4890bfacacc0b67808b7182608f609",
+    "security_dataset_hash": "acb4b012ef114ec885d8d36fcd49820d903d6a74df7ba483d42f3d5f1eb69a1f",
+    "snapshot_version": "builtin.business_data@1.0.0+example.connector_status@2.0.0+builtin.knowledge@1.0.0+builtin.orchestrator@2.0.0+builtin.procurement@2.0.0+configured.http_tools@1.0.0",
+    "baseline_established": true
+  },
+  "failed_cases": [
+    {
+      "id": "COMPOSITE-01",
+      "category": "mixed",
+      "expected_intent": "composite",
+      "actual_intent": "composite",
+      "expected_status": "success",
+      "response_status": "not_found",
+      "error_code": "ANSWER_VERIFICATION_FAILED",
+      "source_count": 0,
+      "latency_ms": 22681.39,
+      "total_tokens": 17067
+    }
+  ],
+  "notes": [
+    "This file intentionally excludes raw answers, document snippets, identity values and absolute local paths.",
+    "The single failed composite case stopped at evidence verification when the knowledge source could not provide sufficient evidence."
+  ]
+}

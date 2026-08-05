@@ -1,0 +1,34 @@
+id: example.connector_status
+version: 2.0.0
+name: Business connector status tool
+enabled: true
+graphs: []
+tools:
+  - id: platform.connector_status.get
+    version: 2.0.0
+    name: Connector status
+    description: Read the health and connector snapshot from the business data gateway.
+    domain: platform
+    capability_id: platform.connector_status
+    capability_name: Connector status
+    capability_description: Inspect the health of configured read-only business connectors.
+    required_permission: platform.status.read
+    risk_level: read_only
+    timeout_seconds: 5
+    tags: [connector, status, health, data-source]
+    examples:
+      - Is the business data connector healthy?
+    input_schema:
+      type: object
+      properties:
+        question: {type: string}
+      additionalProperties: false
+    output_schema:
+      type: object
+    transport:
+      type: http
+      base_url_env: PURCHASE_ORDER_API_BASE_URL
+      path: /api/v1/health
+      method: GET
+      allowed_hosts: [127.0.0.1, localhost]
+      allow_private_network: true

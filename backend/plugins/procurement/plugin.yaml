@@ -1,0 +1,6 @@
+id: builtin.procurement
+version: 2.0.0
+name: Built-in procurement read-only tools
+enabled: true
+python_entrypoint: app.domains.procurement.plugin:ProcurementPlugin
+graphs: []

@@ -1,0 +1,34 @@
+[
+  {
+    "order_number": "PO202607001",
+    "order_type": "采购订单",
+    "business_status": "已审核",
+    "audit_status": "审核通过",
+    "receipt_status": "部分收料",
+    "inbound_status": "未完成入库",
+    "related_documents": ["收料通知单 RN202607001"]
+  },
+  {
+    "order_number": "PO202607002",
+    "order_type": "采购订单",
+    "business_status": "已完成",
+    "audit_status": "审核通过",
+    "receipt_status": "已收料",
+    "inbound_status": "已入库",
+    "related_documents": ["收料通知单 RN202607002", "采购入库单 PIN202607002"]
+  },
+  {
+    "order_number": "PO202607003",
+    "order_type": "采购订单",
+    "business_status": "草稿",
+    "audit_status": "未提交审核",
+    "receipt_status": "未收料",
+    "inbound_status": "未入库",
+    "related_documents": []
+  },
+  {
+    "order_number": "PO202607403",
+    "order_type": "采购订单",
+    "access": "denied"
+  }
+]

@@ -1,0 +1,25 @@
+version: golden-splits-v1
+splits:
+  train:
+    - DOC-01
+    - DOC-02
+    - DOC-03
+    - ORDER-01
+    - ORDER-02
+    - MIXED-01
+    - CLARIFY-01
+  validation:
+    - DOC-04
+    - DOC-05
+    - ORDER-03
+    - ORDER-04
+    - ORDER-05
+    - MIXED-02
+    - MIXED-03
+    - CLARIFY-02
+  sealed_acceptance:
+    - MIXED-04
+    - REJECT-01
+    - REJECT-02
+    - ERROR-01
+    - ERROR-02

@@ -1,0 +1,6 @@
+id: builtin.knowledge
+version: 1.0.0
+name: Built-in enterprise knowledge tool
+enabled: true
+python_entrypoint: app.domains.knowledge.plugin:KnowledgePlugin
+graphs: []

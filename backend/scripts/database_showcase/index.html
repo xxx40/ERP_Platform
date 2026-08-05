@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ERP 数据库与审计视图</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="database-showcase">
+  <header class="topbar">
+    <div class="brand-mark">ERP DATA</div>
+    <div class="title-block">
+      <strong>数据库与审计视图</strong>
+      <span>采购业务数据 · Workflow · 权限决策 · Trace</span>
+    </div>
+    <div class="topbar-status">
+      <span class="status-dot"></span>
+      <span>本地只读</span>
+      <button id="refresh-button" class="command-button" type="button">刷新数据</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar" aria-label="数据视图导航">
+      <button class="nav-button is-active" data-view="overview" type="button">数据总览</button>
+      <button class="nav-button" data-view="business" type="button">采购业务数据</button>
+      <button class="nav-button" data-view="platform" type="button">问答运行数据</button>
+      <button class="nav-button" data-view="trace" type="button">Trace 链路</button>
+      <button class="nav-button" data-view="schema" type="button">表结构</button>
+      <div class="sidebar-meta">
+        <span>统一采购数据 API</span>
+        <strong>sqlite-demo-connector</strong>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section id="view-overview" class="view is-active" aria-labelledby="overview-title">
+        <div class="section-heading">
+          <div>
+            <h1 id="overview-title">数据总览</h1>
+            <p>当前本地数据库状态与最近请求</p>
+          </div>
+          <span id="generated-at" class="muted"></span>
+        </div>
+
+        <div class="metric-strip" id="overview-metrics"></div>
+
+        <section class="section-block">
+          <h2>数据链路</h2>
+          <div class="data-flow" aria-label="数据存储链路">
+            <div class="flow-node source-node"><strong>Web 问答工作台</strong><span>用户问题与身份范围</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-node service-node"><strong>FastAPI 编排层</strong><span>路由、权限、RAG、Trace</span></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-databases">
+              <div class="flow-node business-node"><strong>purchase_orders.db</strong><span>订单、物料、指标</span></div>
+              <div class="flow-node platform-node"><strong>app.db</strong><span>对话、Workflow、工具、权限、Trace</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-block">
+          <div class="section-title-row">
+            <h2>最近请求</h2>
+            <span class="muted">按写入时间倒序</span>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th>时间</th><th>Request ID</th><th>问题</th><th>意图</th><th>状态</th><th>错误码</th></tr></thead>
+              <tbody id="recent-request-rows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section id="view-business" class="view" aria-labelledby="business-title">
+        <div class="section-heading">
+          <div><h1 id="business-title">采购业务数据</h1><p>统一采购数据 API 后方的契约级 Mock 数据</p></div>
+          <input id="order-search" class="search-input" type="search" placeholder="搜索订单、供应商或采购员" aria-label="搜索业务数据">
+        </div>
+
+        <div class="subtabs" role="tablist" aria-label="业务数据表">
+          <button class="subtab is-active" data-business-tab="orders" type="button">采购订单</button>
+          <button class="subtab" data-business-tab="lines" type="button">物料行</button>
+          <button class="subtab" data-business-tab="documents" type="button">关联单据</button>
+          <button class="subtab" data-business-tab="analytics" type="button">分析指标</button>
+        </div>
+        <p id="business-preview-note" class="muted"></p>
+
+        <div id="business-orders" class="subview is-active"><div class="table-wrap"><table class="data-table"><thead><tr><th>订单号</th><th>供应商</th><th>采购组织</th><th>采购员</th><th>业务状态码</th><th>物流状态码</th><th class="number">金额</th><th>权限</th><th>所有者</th></tr></thead><tbody id="order-rows"></tbody></table></div></div>
+        <div id="business-lines" class="subview"><div class="table-wrap"><table class="data-table"><thead><tr><th>订单号</th><th>行</th><th>物料</th><th class="number">订购</th><th class="number">收料</th><th class="number">入库</th><th>单位</th><th class="number">行金额</th><th>仓库</th></tr></thead><tbody id="line-rows"></tbody></table></div></div>
+        <div id="business-documents" class="subview"><div class="table-wrap"><table class="data-table"><thead><tr><th>订单号</th><th>单据类型</th><th>单据编号</th><th>状态码</th><th>业务日期</th><th>来源行</th></tr></thead><tbody id="document-rows"></tbody></table></div></div>
+        <div id="business-analytics" class="subview">
+          <div class="analytics-layout">
+            <section><h2>周期指标</h2><div class="table-wrap"><table class="data-table"><thead><tr><th>周期</th><th class="number">采购金额</th><th class="number">订单量</th><th class="number">平均订单金额</th><th class="number">按期交付率</th></tr></thead><tbody id="metric-rows"></tbody></table></div></section>
+            <section><h2>当前周期维度构成</h2><div id="dimension-bars" class="dimension-bars"></div></section>
+          </div>
+          <section class="section-block"><h2>指标注册表</h2><div class="table-wrap"><table class="data-table"><thead><tr><th>指标</th><th>版本</th><th>单位</th><th>定义</th><th>公式</th><th>允许维度</th></tr></thead><tbody id="definition-rows"></tbody></table></div></section>
+        </div>
+      </section>
+
+      <section id="view-platform" class="view" aria-labelledby="platform-title">
+        <div class="section-heading"><div><h1 id="platform-title">问答运行数据</h1><p>会话、回答、Workflow、工具、权限决策、证据与反馈</p></div></div>
+        <div class="subtabs" role="tablist" aria-label="平台运行数据表">
+          <button class="subtab is-active" data-platform-tab="interactions" type="button">问答记录</button>
+          <button class="subtab" data-platform-tab="evidence" type="button">来源证据</button>
+          <button class="subtab" data-platform-tab="feedback" type="button">反馈记录</button>
+          <button class="subtab" data-platform-tab="workflows" type="button">Workflow Run</button>
+          <button class="subtab" data-platform-tab="tools" type="button">工具调用</button>
+          <button class="subtab" data-platform-tab="policies" type="button">权限决策</button>
+        </div>
+        <div id="platform-interactions" class="subview is-active"><div class="table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>Request ID</th><th>用户问题</th><th>意图</th><th>状态</th><th class="number">来源</th><th>错误码</th></tr></thead><tbody id="interaction-rows"></tbody></table></div></div>
+        <div id="platform-evidence" class="subview"><div class="table-wrap"><table class="data-table"><thead><tr><th>Request ID</th><th>Source ID</th><th>标题</th><th>来源系统</th><th>权威等级</th><th class="number">得分</th><th class="number">片段字符数</th></tr></thead><tbody id="evidence-rows"></tbody></table></div></div>
+        <div id="platform-feedback" class="subview"><div class="table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>Request ID</th><th>评价</th><th>原因</th><th>补充说明</th><th>用户</th></tr></thead><tbody id="feedback-rows"></tbody></table></div></div>
+        <div id="platform-workflows" class="subview"><div class="table-wrap"><table class="data-table"><thead><tr><th>开始时间</th><th>Request ID</th><th>Workflow</th><th>版本</th><th>身份范围</th><th>状态</th><th class="number">节点</th><th class="number">工具</th><th class="number">拒绝</th></tr></thead><tbody id="workflow-run-rows"></tbody></table></div></div>
+        <div id="platform-tools" class="subview"><div class="table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>Request ID</th><th>节点</th><th>工具</th><th>连接器</th><th>状态</th><th class="number">耗时</th><th>参数摘要</th></tr></thead><tbody id="tool-call-rows"></tbody></table></div></div>
+        <div id="platform-policies" class="subview"><div class="table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>Request ID</th><th>用户</th><th>权限动作</th><th>资源</th><th>决策</th><th>策略</th><th>原因</th></tr></thead><tbody id="policy-decision-rows"></tbody></table></div></div>
+      </section>
+
+      <section id="view-trace" class="view" aria-labelledby="trace-title">
+        <div class="section-heading">
+          <div><h1 id="trace-title">Trace 链路</h1><p>一次请求的阶段、耗时、状态和安全筛选后的属性</p></div>
+          <select id="trace-select" class="select-input" aria-label="选择请求"></select>
+        </div>
+        <div id="trace-summary" class="trace-summary"></div>
+        <div class="table-wrap"><table class="data-table trace-table"><thead><tr><th>阶段</th><th>类型</th><th>状态</th><th class="number">耗时</th><th>错误码</th><th>关键属性</th></tr></thead><tbody id="trace-rows"></tbody></table></div>
+      </section>
+
+      <section id="view-schema" class="view" aria-labelledby="schema-title">
+        <div class="section-heading">
+          <div><h1 id="schema-title">数据库表结构</h1><p>字段类型、主键、可空性和当前记录量</p></div>
+          <div class="schema-controls">
+            <select id="schema-database" class="select-input" aria-label="选择数据库"><option value="business">purchase_orders.db</option><option value="platform">app.db</option></select>
+            <select id="schema-table" class="select-input" aria-label="选择数据表"></select>
+          </div>
+        </div>
+        <div id="schema-meta" class="schema-meta"></div>
+        <div class="table-wrap"><table class="data-table"><thead><tr><th>字段</th><th>类型</th><th>主键</th><th>允许为空</th></tr></thead><tbody id="schema-rows"></tbody></table></div>
+      </section>
+
+      <div id="error-banner" class="error-banner" hidden></div>
+    </main>
+  </div>
+</div>
+<script src="/app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "erp-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "npm@11.16.0",
+  "scripts": {
+    "setup": "npm --prefix frontend ci",
+    "build": "npm --prefix frontend run build"
+  }
+}

@@ -1,0 +1,6 @@
+id: builtin.business_data
+version: 1.0.0
+name: Business Integration Gateway datasets
+enabled: true
+python_entrypoint: app.domains.business_data.plugin:BusinessDataPlugin
+graphs: []

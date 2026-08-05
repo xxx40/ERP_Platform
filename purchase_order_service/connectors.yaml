@@ -1,0 +1,10 @@
+version: 1.0.0
+connectors:
+  - id: sqlite-demo-connector
+    type: file_mock
+    enabled: true
+    default: true
+    routes: []
+    database_path: purchase_order_service/data/purchase_orders.db
+    orders_seed_path: purchase_order_service/data/seed_purchase_orders.json
+    analytics_seed_path: purchase_order_service/data/seed_purchase_analytics.json

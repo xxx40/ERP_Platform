@@ -1,0 +1,65 @@
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+dataInUse/
+testExample/
+tmp/
+output/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+coverage.xml
+htmlcov/
+backend/data/*.db
+backend/data/*.db-*
+purchase_order_service/data/*.db
+purchase_order_service/data/*.db-*
+backend/data/evaluation-results/
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Harness managed
+.omc/
+.omx/
+.superpowers
+
+# Repository delivery exclusions
+.npmrc
+docs/尚依纯-实习生成长计划.xlsx
+docs/测试数据-问题.txt
+docs/testing/evaluation-report-20260728.md
+openspec/defense/*.inspect.ndjson
+frontend/pnpm-lock.yaml
+frontend/pnpm-workspace.yaml
+.agents/
+
+backend/data/secrets.enc.json
+purchase_order_service/data/secrets.enc.json
+
+# Local Harness/OpenSpec development assets
+.harness/
+AGENTS.md
+openspec/
+
+# Personal internship and defense materials
+# Keep only neutral testing/evaluation artifacts under docs/ in Git.
+docs/*
+!docs/testing/
+!docs/testing/**

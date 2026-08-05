@@ -1,0 +1,101 @@
+id: platform.generic_readonly_agent
+version: 3.2.1
+name: Controlled read-only Orchestrator Agent
+description: Dynamically discovers authorized read-only tools and executes a bounded Agent loop.
+domain: platform
+state_schema: generic_agent
+business_owner: platform_operations
+business_value: New read-only tools and published datasets require no feature-specific Graph.
+risk_level: read_only
+execution_mode: agentic
+evidence_policy: optional
+triggers: [dynamic]
+allowed_tools: []
+presentation_tools: []
+entry_node: restore_context
+budgets:
+  timeout_seconds: 125
+  max_tool_calls: 8
+  max_model_calls: 8
+  max_retrieval_rounds: 2
+nodes:
+  - id: restore_context
+    kind: state
+    handler: orchestrator.restore_context
+    description: "Confirm that session memory and PendingAgentTask context were restored at the request boundary."
+  - id: request_guard
+    kind: guard
+    handler: orchestrator.request_guard
+    description: "Reject write operations and establish request context."
+  - id: discover_tools
+    kind: router
+    handler: orchestrator.discover_tools
+    description: "Discover tools by tenant, policy, health, risk and semantics."
+  - id: agent_step
+    kind: agent
+    handler: orchestrator.agent_step
+    description: "Let one Agent call tools, request clarification or stop."
+  - id: execute_tools
+    kind: tool
+    handler: orchestrator.execute_tools
+    description: "Execute selected tools through ToolExecutor."
+  - id: observe
+    kind: state
+    handler: orchestrator.observe
+    description: "Return tool observations to the same Agent."
+  - id: clarify
+    kind: response
+    handler: orchestrator.clarify
+    description: "Persist a generic PendingAgentTask and ask for required arguments."
+  - id: synthesize
+    kind: llm
+    handler: orchestrator.synthesize
+    description: "Generate an answer from governed artifacts or public knowledge."
+  - id: verify
+    kind: evaluator
+    handler: orchestrator.verify
+    description: "Verify evidence and frozen business facts."
+  - id: repair
+    kind: llm
+    handler: orchestrator.repair
+    description: "Repair an evidence-constrained answer at most once."
+  - id: respond
+    kind: response
+    handler: orchestrator.respond
+    description: "Return the compatible response and persist sources."
+  - id: reject
+    kind: response
+    handler: orchestrator.reject
+    description: "Reject write, approval and delete operations."
+  - id: error
+    kind: response
+    handler: orchestrator.error
+    description: "Return structured tool or verification errors."
+edges:
+  - {from: restore_context, to: request_guard, when: success}
+  - {from: request_guard, to: discover_tools, when: success}
+  - {from: request_guard, to: clarify, when: clarify}
+  - {from: request_guard, to: reject, when: reject}
+  - {from: request_guard, to: error, when: error}
+  - {from: discover_tools, to: agent_step}
+  - {from: agent_step, to: execute_tools, when: tools}
+  - {from: agent_step, to: synthesize, when: synthesize}
+  - {from: agent_step, to: error, when: error}
+  - {from: execute_tools, to: observe, when: success}
+  - {from: execute_tools, to: clarify, when: clarify}
+  - {from: execute_tools, to: error, when: error}
+  - {from: observe, to: agent_step, when: agent}
+  - {from: observe, to: synthesize, when: synthesize}
+  - {from: synthesize, to: verify, when: verify}
+  - {from: synthesize, to: respond, when: respond}
+  - {from: synthesize, to: error, when: error}
+  - {from: verify, to: respond, when: respond}
+  - {from: verify, to: agent_step, when: need_more_evidence}
+  - {from: verify, to: repair, when: repair}
+  - {from: verify, to: error, when: error}
+  - {from: repair, to: verify, when: success}
+  - {from: repair, to: error, when: error}
+  - {from: clarify, to: END}
+  - {from: respond, to: END}
+  - {from: reject, to: END}
+  - {from: error, to: END}

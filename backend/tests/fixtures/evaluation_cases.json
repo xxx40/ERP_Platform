@@ -1,0 +1,393 @@
+[
+  {
+    "id": "DOC-01",
+    "category": "knowledge",
+    "question": "采购订单审核后如何收料？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1
+  },
+  {
+    "id": "DOC-02",
+    "category": "knowledge",
+    "question": "采购入库前需要注意什么？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1
+  },
+  {
+    "id": "DOC-03",
+    "category": "knowledge",
+    "question": "收料通知单如何生成？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1
+  },
+  {
+    "id": "DOC-04",
+    "category": "knowledge",
+    "question": "采购订单审核通过意味着什么？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1
+  },
+  {
+    "id": "DOC-05",
+    "category": "knowledge",
+    "question": "采购订单可以分批入库吗？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1
+  },
+  {
+    "id": "DOC-06",
+    "category": "knowledge",
+    "question": "采购订单完成收货之后下一步是什么？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1
+  },
+  {
+    "id": "DOC-07",
+    "category": "knowledge",
+    "question": "什么是采购订单？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1
+  },
+  {
+    "id": "DOC-08",
+    "category": "knowledge",
+    "question": "订单审核通过后是不是就代表已经入库？",
+    "expected_intent": "document",
+    "expected_status": "success",
+    "min_source_count": 1,
+    "expected_terms": [
+      "不代表"
+    ]
+  },
+  {
+    "id": "ORDER-01",
+    "category": "business_data",
+    "question": "PO202607001 当前状态是什么？",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607001",
+    "expected_terms": [
+      "部分收货",
+      "未入库"
+    ]
+  },
+  {
+    "id": "ORDER-02",
+    "category": "business_data",
+    "question": "查一下 PO202607002 到哪一步了",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607002",
+    "expected_terms": [
+      "已入库"
+    ]
+  },
+  {
+    "id": "ORDER-03",
+    "category": "business_data",
+    "question": "PO202607003 审核状态",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607003",
+    "expected_terms": [
+      "暂存"
+    ]
+  },
+  {
+    "id": "ORDER-04",
+    "category": "business_data",
+    "question": "采购订单 PO202607001 是否已经收料？",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607001",
+    "expected_terms": [
+      "部分收货"
+    ]
+  },
+  {
+    "id": "ORDER-05",
+    "category": "business_data",
+    "question": "PO202607002 是否入库？",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607002",
+    "expected_terms": [
+      "已入库"
+    ]
+  },
+  {
+    "id": "ORDER-06",
+    "category": "business_data",
+    "question": "请问 PO202607004 目前进展到哪里？",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607004"
+  },
+  {
+    "id": "ORDER-07",
+    "category": "business_data",
+    "question": "看下PO202607005现在是什么状态",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607005"
+  },
+  {
+    "id": "ORDER-LIST-01",
+    "category": "business_data",
+    "question": "哪些采购订单还没有入库？",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_list_state": "not_inbound",
+    "min_order_list_count": 1
+  },
+  {
+    "id": "ORDER-LIST-02",
+    "category": "business_data",
+    "question": "列出尚未全部入库的采购单",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_list_state": "incomplete",
+    "min_order_list_count": 1
+  },
+  {
+    "id": "ORDER-LIST-03",
+    "category": "business_data",
+    "question": "有多少订单仍在等待入库？",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_list_state": "not_inbound",
+    "min_order_list_count": 1
+  },
+  {
+    "id": "ANA-01",
+    "category": "analytics",
+    "question": "本月采购经营数据概览",
+    "expected_intent": "analytics",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "expected_analytics_period": "month"
+  },
+  {
+    "id": "ANA-02",
+    "category": "analytics",
+    "question": "本季度采购金额和订单量环比如何？",
+    "expected_intent": "analytics",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "expected_analytics_period": "quarter_to_date",
+    "expected_analytics_comparison": "previous_period"
+  },
+  {
+    "id": "ANA-03",
+    "category": "analytics",
+    "question": "本月各供应商采购金额排名",
+    "expected_intent": "analytics",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "expected_analytics_period": "month",
+    "expected_analytics_dimension": "supplier"
+  },
+  {
+    "id": "ANA-04",
+    "category": "analytics",
+    "question": "本月采购金额同比变化和主要供应商构成，并给出建议",
+    "expected_intent": "analytics",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "expected_analytics_period": "month",
+    "expected_analytics_comparison": "year_over_year",
+    "expected_analytics_dimension": "supplier"
+  },
+  {
+    "id": "ANA-05",
+    "category": "analytics",
+    "question": "本季度采购品类占比和趋势",
+    "expected_intent": "analytics",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "expected_analytics_period": "quarter_to_date",
+    "expected_analytics_dimension": "category"
+  },
+  {
+    "id": "ANA-06",
+    "category": "analytics",
+    "question": "这个月订单量和采购金额概览",
+    "expected_intent": "analytics",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "expected_analytics_period": "month"
+  },
+  {
+    "id": "MIXED-01",
+    "category": "mixed",
+    "question": "PO202607001 为什么没有全部入库？",
+    "expected_intent": "mixed",
+    "expected_status": "success",
+    "expected_order_number": "PO202607001",
+    "min_source_count": 1,
+    "require_business_facts_in_answer": true
+  },
+  {
+    "id": "MIXED-02",
+    "category": "mixed",
+    "question": "PO202607003 下一步怎么办？",
+    "expected_intent": "mixed",
+    "expected_status": "success",
+    "expected_order_number": "PO202607003",
+    "min_source_count": 1,
+    "require_business_facts_in_answer": true
+  },
+  {
+    "id": "MIXED-03",
+    "category": "mixed",
+    "question": "PO202607001 当前卡在哪里，怎么处理？",
+    "expected_intent": "mixed",
+    "expected_status": "success",
+    "expected_order_number": "PO202607001",
+    "min_source_count": 1,
+    "require_business_facts_in_answer": true
+  },
+  {
+    "id": "MIXED-04",
+    "category": "mixed",
+    "question": "PO202607002 已经入库了吗，流程依据是什么？",
+    "expected_intent": "mixed",
+    "expected_status": "success",
+    "expected_order_number": "PO202607002",
+    "min_source_count": 1,
+    "require_business_facts_in_answer": true
+  },
+  {
+    "id": "MIXED-05",
+    "category": "mixed",
+    "question": "PO202607001，按照制度我下一步应该怎么处理？",
+    "expected_intent": "mixed",
+    "expected_status": "success",
+    "expected_order_number": "PO202607001",
+    "min_source_count": 1,
+    "require_business_facts_in_answer": true
+  },
+  {
+    "id": "COMPOSITE-01",
+    "category": "mixed",
+    "question": "本季度采购分析，并说明相关制度依据",
+    "expected_intent": "composite",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "min_source_count": 1,
+    "require_business_facts_in_answer": true
+  },
+  {
+    "id": "CLARIFY-01",
+    "category": "control",
+    "question": "我的订单为什么还没入库？",
+    "expected_intent": "clarify",
+    "expected_status": "needs_clarification"
+  },
+  {
+    "id": "CLARIFY-02",
+    "category": "control",
+    "question": "这张订单到哪一步了？",
+    "expected_intent": "clarify",
+    "expected_status": "needs_clarification"
+  },
+  {
+    "id": "RECOVERY-01",
+    "category": "control",
+    "setup_turns": [
+      {
+        "question": "这张采购订单现在到哪一步了？",
+        "expected_intent": "clarify",
+        "expected_status": "needs_clarification",
+        "expected_error_code": "ROUTING_CLARIFICATION_REQUIRED"
+      }
+    ],
+    "question": "PO202607001",
+    "expected_intent": "order",
+    "expected_status": "success",
+    "expected_order_number": "PO202607001"
+  },
+  {
+    "id": "RECOVERY-02",
+    "category": "control",
+    "setup_turns": [
+      {
+        "question": "我的订单为什么还没入库？",
+        "expected_intent": "clarify",
+        "expected_status": "needs_clarification",
+        "expected_error_code": "ROUTING_CLARIFICATION_REQUIRED"
+      }
+    ],
+    "question": "PO202607001",
+    "expected_intent": "mixed",
+    "expected_status": "success",
+    "expected_order_number": "PO202607001",
+    "min_source_count": 1,
+    "require_business_facts_in_answer": true
+  },
+  {
+    "id": "GEN-01",
+    "category": "general",
+    "question": "你好，请介绍一下你能做什么",
+    "expected_intent": "general",
+    "expected_status": "success"
+  },
+  {
+    "id": "GEN-02",
+    "category": "general",
+    "question": "请简要解释同比和环比的区别",
+    "expected_intent": "general",
+    "expected_status": "success"
+  },
+  {
+    "id": "REJECT-01",
+    "category": "security",
+    "question": "帮我审核这张采购订单",
+    "expected_intent": "reject",
+    "expected_status": "rejected",
+    "expected_error_code": "HIGH_RISK_OPERATION"
+  },
+  {
+    "id": "REJECT-02",
+    "category": "security",
+    "question": "把采购订单 PO202607001 删除",
+    "expected_intent": "reject",
+    "expected_status": "rejected",
+    "expected_error_code": "HIGH_RISK_OPERATION"
+  },
+  {
+    "id": "ERROR-01",
+    "category": "resilience",
+    "question": "PO202607999 当前状态是什么？",
+    "expected_intent": "order",
+    "expected_status": "not_found",
+    "expected_error_code": "ORDER_NOT_FOUND"
+  },
+  {
+    "id": "ERROR-02",
+    "category": "security",
+    "question": "PO202607403 当前状态是什么？",
+    "expected_intent": "order",
+    "expected_status": "unauthorized",
+    "expected_error_code": "UNAUTHORIZED"
+  },
+  {
+    "id": "ERROR-03",
+    "category": "resilience",
+    "question": "上个月采购金额是多少？",
+    "expected_intent": "analytics",
+    "expected_status": "success",
+    "require_analytics_card": true,
+    "expected_analytics_period": "month",
+    "expected_analytics_metrics": {
+      "purchase_amount": 18248305.11
+    }
+  }
+]

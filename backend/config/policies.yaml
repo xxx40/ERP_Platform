@@ -1,0 +1,69 @@
+policy_id: config-rbac
+version: local-rbac-v1
+roles:
+  procurement_manager:
+    permissions:
+      - knowledge.search
+      - procurement.order.read
+      - procurement.analytics.read
+      - ai.model.invoke
+      - platform.status.read
+      - business.data.read
+      - platform.data_source.create
+      - platform.semantic_model.manage
+    obligations:
+      business.data.read:
+        max_rows: 500
+  procurement_specialist:
+    permissions:
+      - knowledge.search
+      - procurement.order.read
+      - ai.model.invoke
+      - business.data.read
+      - platform.data_source.create
+      - platform.semantic_model.manage
+    obligations:
+      business.data.read:
+        max_rows: 200
+  employee:
+    permissions:
+      - knowledge.search
+      - ai.model.invoke
+  hr_manager:
+    permissions:
+      - hr.report.read
+      - ai.model.invoke
+  platform_admin:
+    permissions:
+      - knowledge.search
+      - procurement.order.read
+      - procurement.analytics.read
+      - ai.model.invoke
+      - platform.status.read
+      - platform.config.manage
+      - platform.connector.manage
+      - platform.dataset.manage
+      - platform.tool.manage
+      - platform.provider.manage
+      - platform.debug.read
+      - business.data.read
+      - platform.data_source.create
+      - platform.semantic_model.manage
+      - platform.data_source.review
+      - platform.data_source.admin
+    obligations:
+      business.data.read:
+        max_rows: 1000
+  data_source_reviewer:
+    permissions:
+      - platform.status.read
+      - platform.data_source.review
+      - platform.dataset.manage
+  data_source_admin:
+    permissions:
+      - platform.status.read
+      - platform.data_source.review
+      - platform.data_source.admin
+      - platform.dataset.manage
+      - platform.connector.manage
+      - platform.config.manage

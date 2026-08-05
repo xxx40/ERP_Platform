@@ -1,0 +1,7 @@
+id: builtin.orchestrator
+version: 2.0.0
+name: 通用单 Agent 编排运行时
+enabled: true
+python_entrypoint: app.agents.plugin:GenericOrchestratorPlugin
+graphs:
+  - graph.yaml

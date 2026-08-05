@@ -1,0 +1,146 @@
+version: 1.0.0
+datasets:
+  - id: procurement.purchase_orders
+    version: 1.0.0
+    name: Purchase orders
+    description: Read-only purchase order facts and registered aggregate metrics.
+    domain: procurement
+    connector_id: sqlite-demo-connector
+    table: purchase_orders
+    enabled: true
+    required_permission: business.data.read
+    tenant_field: tenant_id
+    org_field: org_code
+    owner_field: owner_user_id
+    access_scope_field: access_scope
+    time_field: order_date
+    max_rows: 500
+    tags: [purchase, order, supplier, amount, analytics]
+    examples:
+      - Show purchase orders for this quarter
+      - Count orders by supplier
+      - Calculate total purchase amount
+      - 查询本季度采购金额
+      - 按供应商统计采购额
+    fields:
+      - name: order_number
+        source_column: order_number
+        data_type: string
+        label: Order number
+        semantic_type: identifier
+        sensitivity: internal
+        allowed_operators: [eq, ne, in, not_in, contains, starts_with]
+      - name: supplier_name
+        source_column: supplier_name
+        data_type: string
+        label: Supplier
+        semantic_type: dimension
+        sensitivity: internal
+        allowed_operators: [eq, ne, in, not_in, contains, starts_with]
+      - name: buyer_name
+        source_column: buyer_name
+        data_type: string
+        label: Buyer
+        semantic_type: dimension
+        sensitivity: confidential
+        allowed_operators: [eq, ne, in, not_in, contains]
+      - name: purchase_org_name
+        source_column: purchase_org_name
+        data_type: string
+        label: Purchase organization
+        semantic_type: dimension
+        sensitivity: internal
+        allowed_operators: [eq, ne, in, not_in]
+      - name: order_date
+        source_column: order_date
+        data_type: date
+        label: Order date
+        semantic_type: time
+        sensitivity: internal
+        allowed_operators: [eq, gt, gte, lt, lte, between]
+      - name: currency
+        source_column: currency
+        data_type: string
+        label: Currency
+        semantic_type: dimension
+        sensitivity: internal
+        allowed_operators: [eq, in]
+      - name: total_amount
+        source_column: total_amount
+        data_type: number
+        label: Total amount
+        semantic_type: measure_source
+        sensitivity: confidential
+        allowed_operators: [eq, gt, gte, lt, lte, between]
+      - name: business_status
+        source_column: business_status_code
+        data_type: string
+        label: Business status
+        semantic_type: status
+        sensitivity: internal
+        allowed_operators: [eq, ne, in, not_in]
+      - name: tenant_id
+        source_column: tenant_id
+        data_type: string
+        label: Tenant
+        semantic_type: security_scope
+        sensitivity: restricted
+        selectable: false
+        allowed_operators: [eq]
+      - name: org_code
+        source_column: org_code
+        data_type: string
+        label: Organization
+        semantic_type: security_scope
+        sensitivity: restricted
+        selectable: false
+        allowed_operators: [eq, in]
+      - name: owner_user_id
+        source_column: owner_user_id
+        data_type: string
+        label: Owner
+        semantic_type: security_scope
+        sensitivity: restricted
+        selectable: false
+        allowed_operators: [eq]
+      - name: access_scope
+        source_column: access_scope
+        data_type: string
+        label: Access scope
+        semantic_type: security_scope
+        sensitivity: restricted
+        selectable: false
+        allowed_operators: [eq]
+    metrics:
+      - name: order_count
+        label: Order count
+        aliases: [订单数, 采购订单数量, 下单数量]
+        description: Count of orders in the authorized scope.
+        aggregation: count
+        field: order_number
+        allowed_dimensions: [supplier_name, buyer_name, purchase_org_name, order_date, currency, business_status]
+        unit: orders
+      - name: supplier_count
+        label: Supplier count
+        aliases: [供应商数, 供应商数量]
+        description: Distinct supplier count.
+        aggregation: count_distinct
+        field: supplier_name
+        allowed_dimensions: [purchase_org_name, order_date, currency]
+        unit: suppliers
+      - name: purchase_amount
+        label: Purchase amount
+        aliases: [采购金额, 采购额, 订单金额, 下单金额]
+        description: Sum of purchase order total amounts.
+        aggregation: sum
+        field: total_amount
+        allowed_dimensions: [supplier_name, buyer_name, purchase_org_name, order_date, currency, business_status]
+        unit: currency
+      - name: average_order_amount
+        label: Average order amount
+        aliases: [平均订单金额, 平均采购金额, 客单价]
+        description: Average purchase order amount.
+        aggregation: avg
+        field: total_amount
+        allowed_dimensions: [supplier_name, buyer_name, purchase_org_name, order_date, currency, business_status]
+        unit: currency

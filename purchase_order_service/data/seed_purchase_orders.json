@@ -1,0 +1,399 @@
+{
+  "source_reference": {
+    "name": "供应链云.xlsx",
+    "usage": "仅参考采购订单字段、表关系和状态枚举；以下业务记录均为确定性生成的脱敏模拟数据，不包含真实企业信息",
+    "revision": "2026-07-30.3",
+    "version": "Kingdee Cloud Galaxy V8.0.6.0",
+    "source_tables": [
+      "t_pm_purorderbill",
+      "t_pm_purorderbillentry",
+      "t_pm_purorderbillentry_r",
+      "t_pm_purorderdeliverentry",
+      "t_pm_purorderpayentry",
+      "t_pm_receiptnotice",
+      "t_pm_receiptnoticeentry",
+      "t_pm_receiptnoticeentry_r"
+    ]
+  },
+  "synthetic_generation": {
+    "enabled": true,
+    "random_seed": 20260730,
+    "order_count": 12000,
+    "start_date": "2025-01-01",
+    "end_date": "2026-07-29",
+    "organizations": [
+      {
+        "tenant_id": "tenant-demo",
+        "org_code": "ORG-DEMO-001",
+        "org_name": "华东采购中心（模拟）",
+        "weight": 0.55
+      },
+      {
+        "tenant_id": "tenant-demo",
+        "org_code": "ORG-DEMO-002",
+        "org_name": "华南采购中心（模拟）",
+        "weight": 0.18
+      },
+      {
+        "tenant_id": "tenant-demo",
+        "org_code": "ORG-DEMO-003",
+        "org_name": "华北采购中心（模拟）",
+        "weight": 0.12
+      },
+      {
+        "tenant_id": "tenant-north",
+        "org_code": "ORG-NORTH-001",
+        "org_name": "北方事业部采购组织（模拟）",
+        "weight": 0.1
+      },
+      {
+        "tenant_id": "tenant-south",
+        "org_code": "ORG-SOUTH-001",
+        "org_name": "南方事业部采购组织（模拟）",
+        "weight": 0.05
+      }
+    ]
+  },
+  "orders": [
+    {
+      "order_number": "PO202607001",
+      "order_type": "采购订单",
+      "bill_status_code": "C",
+      "business_status_code": "status_4",
+      "logistics_status_code": "D",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "change_status_code": "A",
+      "status_reason": "订单已生成收货通知，当前仅有 40 件完成收货且尚未生成采购入库单；剩余数量等待后续收货和入库处理。",
+      "supplier": {"code": "SUP-DEMO-001", "name": "示例供应商A"},
+      "buyer": {"code": "BUYER-DEMO-001", "name": "示例采购员张三"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-01",
+      "currency": "CNY",
+      "total_amount": 12000,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "demo-user",
+      "access_scope": "org",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-001",
+          "material_name": "示例物料A",
+          "ordered_qty": 100,
+          "received_qty": 40,
+          "inbound_qty": 0,
+          "unit": "PCS",
+          "unit_price": 106.19,
+          "tax_inclusive_unit_price": 120,
+          "line_amount": 12000,
+          "warehouse": {"code": "WH-DEMO-01", "name": "示例原料仓"},
+          "planned_receive_date": "2026-07-10",
+          "delivery_date": "2026-07-10",
+          "promised_date": "2026-07-10",
+          "row_close_status_code": "A",
+          "row_terminate_status_code": "A"
+        }
+      ],
+      "related_documents": [
+        {
+          "document_type": "receipt_notice",
+          "document_type_label": "收货通知单",
+          "document_number": "RN202607001",
+          "status_code": "B",
+          "business_date": "2026-07-10",
+          "source_line_no": 1
+        }
+      ]
+    },
+    {
+      "order_number": "PO202607002",
+      "order_type": "采购订单",
+      "bill_status_code": "C",
+      "business_status_code": "status_5",
+      "logistics_status_code": "G",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "change_status_code": "A",
+      "status_reason": "订单数量已全部完成收货和采购入库，关联收货通知单与采购入库单均已审核。",
+      "supplier": {"code": "SUP-DEMO-002", "name": "示例供应商B"},
+      "buyer": {"code": "BUYER-DEMO-002", "name": "示例采购员李四"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-02",
+      "currency": "CNY",
+      "total_amount": 8500,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "demo-user",
+      "access_scope": "org",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-002",
+          "material_name": "示例物料B",
+          "ordered_qty": 50,
+          "received_qty": 50,
+          "inbound_qty": 50,
+          "unit": "PCS",
+          "unit_price": 150.44,
+          "tax_inclusive_unit_price": 170,
+          "line_amount": 8500,
+          "warehouse": {"code": "WH-DEMO-01", "name": "示例原料仓"},
+          "planned_receive_date": "2026-07-08",
+          "delivery_date": "2026-07-08",
+          "promised_date": "2026-07-08",
+          "row_close_status_code": "B",
+          "row_terminate_status_code": "A"
+        }
+      ],
+      "related_documents": [
+        {
+          "document_type": "receipt_notice",
+          "document_type_label": "收货通知单",
+          "document_number": "RN202607002",
+          "status_code": "C",
+          "business_date": "2026-07-08",
+          "source_line_no": 1
+        },
+        {
+          "document_type": "purchase_inbound",
+          "document_type_label": "采购入库单",
+          "document_number": "PIN202607002",
+          "status_code": "C",
+          "business_date": "2026-07-09",
+          "source_line_no": 1
+        }
+      ]
+    },
+    {
+      "order_number": "PO202607003",
+      "order_type": "采购订单",
+      "bill_status_code": "A",
+      "business_status_code": "status_1",
+      "logistics_status_code": "A",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "supplier": {"code": "SUP-DEMO-003", "name": "示例供应商C"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-03",
+      "currency": "CNY",
+      "total_amount": 3600,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "demo-user",
+      "access_scope": "owner",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-003",
+          "material_name": "示例物料C",
+          "ordered_qty": 30,
+          "received_qty": 0,
+          "inbound_qty": 0,
+          "unit": "PCS",
+          "warehouse": {"code": "WH-DEMO-02", "name": "示例备件仓"},
+          "planned_receive_date": "2026-07-15",
+          "delivery_date": null,
+          "row_close_status_code": "A"
+        }
+      ],
+      "related_documents": []
+    },
+    {
+      "order_number": "PO202607004",
+      "order_type": "采购订单",
+      "bill_status_code": "B",
+      "business_status_code": "status_2",
+      "logistics_status_code": "A",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "supplier": {"code": "SUP-DEMO-001", "name": "示例供应商A"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-04",
+      "currency": "CNY",
+      "total_amount": 15600,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "buyer-demo",
+      "access_scope": "org",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-004",
+          "material_name": "示例物料D",
+          "ordered_qty": 120,
+          "received_qty": 0,
+          "inbound_qty": 0,
+          "unit": "PCS",
+          "warehouse": {"code": "WH-DEMO-01", "name": "示例原料仓"},
+          "planned_receive_date": "2026-07-18",
+          "delivery_date": null,
+          "row_close_status_code": "A"
+        }
+      ],
+      "related_documents": []
+    },
+    {
+      "order_number": "PO202607005",
+      "order_type": "采购订单",
+      "bill_status_code": "C",
+      "business_status_code": "status_3",
+      "logistics_status_code": "A",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "supplier": {"code": "SUP-DEMO-004", "name": "示例供应商D"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-05",
+      "currency": "CNY",
+      "total_amount": 24800,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "buyer-demo",
+      "access_scope": "org",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-005",
+          "material_name": "示例物料E",
+          "ordered_qty": 80,
+          "received_qty": 0,
+          "inbound_qty": 0,
+          "unit": "PCS",
+          "warehouse": {"code": "WH-DEMO-01", "name": "示例原料仓"},
+          "planned_receive_date": "2026-07-20",
+          "delivery_date": null,
+          "row_close_status_code": "A"
+        }
+      ],
+      "related_documents": []
+    },
+    {
+      "order_number": "PO202607006",
+      "order_type": "采购订单",
+      "bill_status_code": "C",
+      "business_status_code": "status_4",
+      "logistics_status_code": "E",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "supplier": {"code": "SUP-DEMO-002", "name": "示例供应商B"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-06",
+      "currency": "CNY",
+      "total_amount": 19200,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "buyer-demo",
+      "access_scope": "org",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-006",
+          "material_name": "示例物料F",
+          "ordered_qty": 80,
+          "received_qty": 80,
+          "inbound_qty": 0,
+          "unit": "PCS",
+          "warehouse": {"code": "WH-DEMO-02", "name": "示例备件仓"},
+          "planned_receive_date": "2026-07-12",
+          "delivery_date": "2026-07-12",
+          "row_close_status_code": "A"
+        }
+      ],
+      "related_documents": [
+        {
+          "document_type": "receipt_notice",
+          "document_type_label": "收货通知单",
+          "document_number": "RN202607006",
+          "status_code": "C",
+          "business_date": "2026-07-12",
+          "source_line_no": 1
+        }
+      ]
+    },
+    {
+      "order_number": "PO202607007",
+      "order_type": "采购订单",
+      "bill_status_code": "C",
+      "business_status_code": "status_4",
+      "logistics_status_code": "F",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "supplier": {"code": "SUP-DEMO-004", "name": "示例供应商D"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-07",
+      "currency": "CNY",
+      "total_amount": 26400,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "buyer-demo",
+      "access_scope": "org",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-007",
+          "material_name": "示例物料G",
+          "ordered_qty": 120,
+          "received_qty": 120,
+          "inbound_qty": 60,
+          "unit": "PCS",
+          "warehouse": {"code": "WH-DEMO-01", "name": "示例原料仓"},
+          "planned_receive_date": "2026-07-13",
+          "delivery_date": "2026-07-13",
+          "row_close_status_code": "A"
+        }
+      ],
+      "related_documents": [
+        {
+          "document_type": "receipt_notice",
+          "document_type_label": "收货通知单",
+          "document_number": "RN202607007",
+          "status_code": "C",
+          "business_date": "2026-07-13",
+          "source_line_no": 1
+        },
+        {
+          "document_type": "purchase_inbound",
+          "document_type_label": "采购入库单",
+          "document_number": "PIN202607007",
+          "status_code": "B",
+          "business_date": "2026-07-14",
+          "source_line_no": 1
+        }
+      ]
+    },
+    {
+      "order_number": "PO202607403",
+      "order_type": "采购订单",
+      "bill_status_code": "C",
+      "business_status_code": "status_3",
+      "logistics_status_code": "A",
+      "close_status_code": "A",
+      "cancel_status_code": "A",
+      "supplier": {"code": "SUP-DEMO-009", "name": "受限示例供应商"},
+      "purchase_org": {"code": "ORG-DEMO-001", "name": "示例采购组织"},
+      "order_date": "2026-07-08",
+      "currency": "CNY",
+      "total_amount": 9800,
+      "tenant_id": "tenant-demo",
+      "org_code": "ORG-DEMO-001",
+      "owner_user_id": "restricted-user",
+      "access_scope": "owner",
+      "lines": [
+        {
+          "line_no": 1,
+          "material_code": "MAT-DEMO-009",
+          "material_name": "受限示例物料",
+          "ordered_qty": 20,
+          "received_qty": 0,
+          "inbound_qty": 0,
+          "unit": "PCS",
+          "warehouse": {"code": "WH-DEMO-03", "name": "受限示例仓"},
+          "planned_receive_date": "2026-07-25",
+          "delivery_date": null,
+          "row_close_status_code": "A"
+        }
+      ],
+      "related_documents": []
+    }
+  ]
+}

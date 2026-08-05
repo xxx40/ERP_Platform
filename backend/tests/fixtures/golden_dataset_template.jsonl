@@ -1,0 +1,2 @@
+{"id":"GOLD-001","split":"train","category":"knowledge","question":"请替换为真实业务问题","expected_intent":"document","expected_status":"success","expected_points":["必须出现的业务事实"],"forbidden_points":["不得出现的错误事实"],"source_expectation":"应引用的知识库或文档范围","owner":"业务专家","reviewed_at":"YYYY-MM-DD"}
+{"id":"GOLD-002","split":"validation","category":"analytics","question":"请替换为真实分析问题","expected_intent":"analytics","expected_status":"success","expected_points":["指标口径","比较周期"],"forbidden_points":["未经计算的数字"],"owner":"采购业务专家","reviewed_at":"YYYY-MM-DD"}

@@ -1,0 +1,21 @@
+policy_id: erp-knowledge-access
+version: local-demo-v1
+default_effect: deny
+
+# Local demo Provider. In an enterprise deployment this file is replaced by an
+# IAM/PDP adapter implementing KnowledgeAccessProvider; connector credentials
+# remain platform-owned while collection scope is resolved per user.
+rules:
+  - id: demo-procurement-knowledge
+    match:
+      tenant_ids: [tenant-demo]
+      org_codes: [ORG-DEMO-001]
+      roles_any:
+        - procurement_manager
+        - procurement_specialist
+        - employee
+        - platform_admin
+      user_ids: []
+    grants:
+      wise: ["*"]
+      ima: ["*"]
