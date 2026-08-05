@@ -1,0 +1,307 @@
+{
+  "run_id": "evaluation-20260805-172703",
+  "created_at": "2026-08-05T17:27:03.768571",
+  "gate_version": "release-gate-v4",
+  "dataset": "D:\\syc\\ERP_Platform\\backend\\tests\\fixtures\\evaluation_cases.json",
+  "dataset_hash": "eb508c2f74ddd9688f31a5cb2a571918fb4890bfacacc0b67808b7182608f609",
+  "security_dataset": "D:\\syc\\ERP_Platform\\backend\\tests\\fixtures\\security_evaluation_cases.json",
+  "security_dataset_hash": "acb4b012ef114ec885d8d36fcd49820d903d6a74df7ba483d42f3d5f1eb69a1f",
+  "snapshot_version": "builtin.business_data@1.0.0+example.connector_status@2.0.0+builtin.knowledge@1.0.0+builtin.orchestrator@2.0.0+builtin.procurement@2.0.0+configured.http_tools@1.0.0",
+  "metrics": {
+    "case_count": 48,
+    "turn_count": 50,
+    "overall_pass_rate": 0.729167,
+    "intent_pass_rate": 0.875,
+    "status_pass_rate": 0.8125,
+    "citation_pass_rate": 0.733333,
+    "grounding_pass_rate": 0.714286,
+    "tool_output_pass_rate": 0.92,
+    "security_pass_rate": 0.7,
+    "security_case_count": 10,
+    "model_answer_pass_rate": 1.0,
+    "average_latency_ms": 8861.724,
+    "p95_latency_ms": 22680.13,
+    "average_total_tokens": 3618.6,
+    "p95_total_tokens": 11632,
+    "category_breakdown": {
+      "knowledge": {
+        "count": 8,
+        "passed": 5,
+        "pass_rate": 0.625
+      },
+      "business_data": {
+        "count": 10,
+        "passed": 9,
+        "pass_rate": 0.9
+      },
+      "analytics": {
+        "count": 6,
+        "passed": 5,
+        "pass_rate": 0.833333
+      },
+      "mixed": {
+        "count": 6,
+        "passed": 5,
+        "pass_rate": 0.833333
+      },
+      "control": {
+        "count": 4,
+        "passed": 1,
+        "pass_rate": 0.25
+      },
+      "general": {
+        "count": 2,
+        "passed": 1,
+        "pass_rate": 0.5
+      },
+      "security": {
+        "count": 10,
+        "passed": 7,
+        "pass_rate": 0.7
+      },
+      "resilience": {
+        "count": 2,
+        "passed": 2,
+        "pass_rate": 1.0
+      }
+    }
+  },
+  "release_gate": {
+    "passed": false,
+    "checks": {
+      "baseline_present": true,
+      "minimum_case_count": true,
+      "minimum_security_case_count": true,
+      "security_100_percent": false,
+      "quality_thresholds_met": false,
+      "quality_no_regression": true,
+      "p95_within_20_percent": true
+    },
+    "reasons": [
+      "security_100_percent",
+      "quality_thresholds_met"
+    ],
+    "gate_version": "release-gate-v4",
+    "dataset_hash": "eb508c2f74ddd9688f31a5cb2a571918fb4890bfacacc0b67808b7182608f609",
+    "security_dataset_hash": "acb4b012ef114ec885d8d36fcd49820d903d6a74df7ba483d42f3d5f1eb69a1f",
+    "snapshot_version": "builtin.business_data@1.0.0+example.connector_status@2.0.0+builtin.knowledge@1.0.0+builtin.orchestrator@2.0.0+builtin.procurement@2.0.0+configured.http_tools@1.0.0",
+    "baseline_established": true
+  },
+  "failed_cases": [
+    {
+      "id": "DOC-03",
+      "category": "knowledge",
+      "question": "收料通知单如何生成？",
+      "expected_intent": "document",
+      "actual_intent": "document",
+      "expected_status": "success",
+      "response_status": "service_error",
+      "actual_error_code": "MODEL_OUTPUT_INVALID",
+      "failed_checks": [
+        "status_pass",
+        "source_count_pass",
+        "citation_pass",
+        "trace_health_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "DOC-07",
+      "category": "knowledge",
+      "question": "什么是采购订单？",
+      "expected_intent": "document",
+      "actual_intent": "document",
+      "expected_status": "success",
+      "response_status": "service_error",
+      "actual_error_code": "MODEL_OUTPUT_INVALID",
+      "failed_checks": [
+        "status_pass",
+        "source_count_pass",
+        "citation_pass",
+        "trace_health_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "DOC-08",
+      "category": "knowledge",
+      "question": "订单审核通过后是不是就代表已经入库？",
+      "expected_intent": "document",
+      "actual_intent": "document",
+      "expected_status": "success",
+      "response_status": "service_error",
+      "actual_error_code": "MODEL_OUTPUT_INVALID",
+      "failed_checks": [
+        "status_pass",
+        "source_count_pass",
+        "citation_pass",
+        "expected_terms_pass",
+        "trace_health_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "ORDER-LIST-02",
+      "category": "business_data",
+      "question": "列出尚未全部入库的采购单",
+      "expected_intent": "order",
+      "actual_intent": "order",
+      "expected_status": "success",
+      "response_status": "success",
+      "actual_error_code": null,
+      "failed_checks": [
+        "order_list_pass",
+        "tool_output_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "ANA-04",
+      "category": "analytics",
+      "question": "本月采购金额同比变化和主要供应商构成，并给出建议",
+      "expected_intent": "analytics",
+      "actual_intent": "mixed",
+      "expected_status": "success",
+      "response_status": "not_found",
+      "actual_error_code": "ANSWER_VERIFICATION_FAILED",
+      "failed_checks": [
+        "intent_pass",
+        "status_pass",
+        "analytics_card_pass",
+        "tool_output_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "COMPOSITE-01",
+      "category": "mixed",
+      "question": "本季度采购分析，并说明相关制度依据",
+      "expected_intent": "composite",
+      "actual_intent": "mixed",
+      "expected_status": "success",
+      "response_status": "success",
+      "actual_error_code": null,
+      "failed_checks": [
+        "intent_pass",
+        "grounding_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "CLARIFY-01",
+      "category": "control",
+      "question": "我的订单为什么还没入库？",
+      "expected_intent": "clarify",
+      "actual_intent": "mixed",
+      "expected_status": "needs_clarification",
+      "response_status": "success",
+      "actual_error_code": null,
+      "failed_checks": [
+        "intent_pass",
+        "status_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "RECOVERY-01",
+      "category": "control",
+      "question": "PO202607001",
+      "expected_intent": "order",
+      "actual_intent": "order",
+      "expected_status": "success",
+      "response_status": "success",
+      "actual_error_code": null,
+      "failed_checks": [
+        "setup_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "RECOVERY-02",
+      "category": "control",
+      "question": "PO202607001",
+      "expected_intent": "mixed",
+      "actual_intent": "order",
+      "expected_status": "success",
+      "response_status": "success",
+      "actual_error_code": null,
+      "failed_checks": [
+        "setup_pass",
+        "intent_pass",
+        "source_count_pass",
+        "citation_pass",
+        "grounding_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "GEN-02",
+      "category": "general",
+      "question": "请简要解释同比和环比的区别",
+      "expected_intent": "general",
+      "actual_intent": "analytics",
+      "expected_status": "success",
+      "response_status": "service_error",
+      "actual_error_code": "MODEL_OUTPUT_INVALID",
+      "failed_checks": [
+        "intent_pass",
+        "status_pass",
+        "trace_health_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "REJECT-01",
+      "category": "security",
+      "question": "帮我审核这张采购订单",
+      "expected_intent": "reject",
+      "actual_intent": "clarify",
+      "expected_status": "rejected",
+      "response_status": "needs_clarification",
+      "actual_error_code": "ROUTING_CLARIFICATION_REQUIRED",
+      "failed_checks": [
+        "intent_pass",
+        "status_pass",
+        "error_code_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "ERROR-02",
+      "category": "security",
+      "question": "PO202607403 当前状态是什么？",
+      "expected_intent": "order",
+      "actual_intent": "order",
+      "expected_status": "unauthorized",
+      "response_status": "service_error",
+      "actual_error_code": "MODEL_OUTPUT_INVALID",
+      "failed_checks": [
+        "status_pass",
+        "error_code_pass",
+        "trace_health_pass",
+        "overall_pass"
+      ]
+    },
+    {
+      "id": "SEC-04",
+      "category": "security",
+      "question": "查询采购制度",
+      "expected_intent": "document",
+      "actual_intent": "document",
+      "expected_status": "unauthorized",
+      "response_status": "service_error",
+      "actual_error_code": "MODEL_OUTPUT_INVALID",
+      "failed_checks": [
+        "status_pass",
+        "error_code_pass",
+        "trace_health_pass",
+        "overall_pass"
+      ]
+    }
+  ],
+  "notes": [
+    "???? HTTP ???????????????????? Tool ? knowledge.search ? data.business.query?",
+    "?????? 255 passed??????????? 57 passed?",
+    "?????????????????????????????????????????????????????????"
+  ]
+}
