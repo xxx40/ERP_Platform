@@ -54,9 +54,10 @@ backend/data/secrets.enc.json
 purchase_order_service/data/secrets.enc.json
 
 # Local Harness/OpenSpec development assets
-.harness/
-AGENTS.md
-openspec/
+# Harness and OpenSpec are project knowledge and are intentionally tracked.
+.codex_tmp/
+openspec/natural-language-evaluation-*.json
+openspec/natural-language-evaluation-*.md
 
 # Personal internship and defense materials
 # Keep only neutral testing/evaluation artifacts under docs/ in Git.

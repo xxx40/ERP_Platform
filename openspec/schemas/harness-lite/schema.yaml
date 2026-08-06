@@ -1,0 +1,63 @@
+name: harness-lite
+version: 4
+description: >
+  面向日常开发的轻量工作流：brainstorm → tasks → apply → 快速归档。
+
+artifacts:
+  - id: brainstorm
+    generates: brainstorm.md
+    description: 汇总实施所需的目标、现状、范围、方案、风险、验收与流程选择
+    template: brainstorm.md
+    instruction: |
+      先解决会实质改变范围、方案或验收的问题，不要写成待办后继续。
+
+      使用当前会话已经确认的调查和决策，按模板生成 brainstorm.md。
+      只在缺少关键事实时补充调查；不重复读取仍在热上下文中的内容。
+      流程选择只依据持久化协调需要与已确认风险，不因文档篇幅升级 Full。
+
+      存在多阶段、分支、异步、状态流转或 3 个以上组件时，在目标后保留“一图读懂”，
+      用一张 Mermaid 表达全局主线并在图后写出关键结论；简单变更删除整个可选章节。
+      长列表按真实主题分组或转为字段稳定的表格，不添加阅读路径、章节说明或装饰性图表。
+    requires: []
+
+  - id: tasks
+    generates: tasks.md
+    description: 从 brainstorm 生成面向结果与验证的简洁实施清单
+    template: tasks.md
+    instruction: |
+      读取 brainstorm.md，并按模板生成 tasks.md。
+
+      每个 checkbox 对应一个可独立验证的结果，只描述：
+      - 结果：完成后可观察到什么
+      - 范围：可从仓库查明时列出主要触点
+      - 验证：证明该结果完成的命令或检查
+
+      同一结果的代码、测试、配置和文档合并处理；只有结果可独立交付或验证时才拆分。
+      不添加执行模式、提交信息、篇幅限制，或逐文件、TDD 阶段等过程步骤。
+    requires:
+      - brainstorm
+
+apply:
+  requires: [tasks]
+  tracks: tasks.md
+  instruction: |
+    读取 brainstorm.md 和 tasks.md，由当前 Agent 从首个未完成任务开始顺序实施。
+
+    - 每次刷新 apply 状态和当前任务；上下文仍热且无压缩或外部编辑时直接复用，
+      恢复或不确定时只补读全局约束和当前任务所需内容。
+    - 开始前检查 branch、HEAD、git status，保护既有用户改动；目标文件已有无法
+      区分的修改时停止。
+    - 每项完成必要调查和最小修改，运行最邻近验证；只有验证通过才勾选任务。
+    - 有稳定、快速测试接缝时可使用聚焦 RED→GREEN；其他变更实施后验证即可。
+    - 验证失败时先做范围内修复，仍失败则保持任务未完成、记录最小恢复信息并停止。
+    - 同范围发现可补 task 后继续；改变范围、验收、外部行为或方案时先更新 brainstorm
+      并取得确认。
+    - 默认不创建 worktree、不分派实现 Agent、不安装无关依赖、不提交或推送。
+
+    全部任务完成后做一次低成本 diff 自审。只有共享核心、跨模块行为、测试证据
+    较弱、实现不确定、diff 超出 brainstorm，或用户/项目要求时，才调用
+    review-orchestrator；默认一次快速审查，仅定向复审阻断修复。
+
+    成功后运行普通 OpenSpec archive，不套用 harness-full 的 verify、retrospective
+    或交付门禁。归档完成后询问用户是否需要 commit、push、PR 或适用的清理动作；
+    默认停止，任何动作都必须由用户显式选择。

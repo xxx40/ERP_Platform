@@ -1,0 +1,8 @@
+version: "2.0"
+project:
+  name: erp-platform
+  types: []
+targets:
+  - codex
+telemetry:
+  id: 9a90d320-bd66-4244-9c4b-bc7e939c119d
