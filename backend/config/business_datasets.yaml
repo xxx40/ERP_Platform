@@ -1,0 +1,194 @@
+﻿version: 1.1.0
+datasets:
+  - id: procurement.purchase_orders
+    version: 1.0.0
+    name: 采购订单
+    description: 采购订单事实数据，支持订单详情、订单列表和采购金额分析。
+    domain: procurement
+    connector_id: purchase-order-provider
+    enabled: true
+    required_permission: business.data.read
+    tags: [采购, 采购订单, 供应商, 采购金额, 入库]
+    examples:
+      - 查询采购订单 PO202607001 的状态
+      - 统计本季度各供应商采购金额
+      - 查询还没有入库的采购订单
+    fields:
+      - name: order_number
+        source_column: order_number
+        label: 采购订单号
+        description: 用于唯一标识一张采购订单。
+        semantic_type: identifier
+        aliases: [订单号, 采购单号, PO号]
+      - name: supplier_name
+        source_column: supplier_name
+        label: 供应商名称
+        description: 采购订单对应的供应商名称。
+        semantic_type: dimension
+        aliases: [供应商, 供货商]
+      - name: buyer_name
+        source_column: buyer_name
+        label: 采购员
+        description: 负责该采购订单的采购人员。
+        semantic_type: dimension
+        aliases: [采购人员, 采购负责人]
+      - name: purchase_org_name
+        source_column: purchase_org_name
+        label: 采购组织
+        description: 负责该采购业务的组织。
+        semantic_type: dimension
+        aliases: [采购组织, 采购部门]
+      - name: order_date
+        source_column: order_date
+        label: 下单日期
+        description: 采购订单创建或下单的日期。
+        semantic_type: time
+        aliases: [订单日期, 下单时间]
+      - name: currency
+        source_column: currency
+        label: 币种
+        description: 订单金额使用的币种。
+        semantic_type: dimension
+        aliases: [货币]
+      - name: total_amount
+        source_column: total_amount
+        label: 订单金额
+        description: 采购订单总金额。
+        semantic_type: measure_source
+        aliases: [采购金额, 采购额, 订单总额]
+      - name: business_status
+        source_column: business_status
+        label: 业务状态
+        description: 采购订单当前的业务状态。
+        semantic_type: status
+        aliases: [订单状态, 入库状态]
+      - name: status_reason
+        source_column: status_reason
+        label: 状态说明
+        description: 业务系统对当前订单状态给出的补充说明。
+        semantic_type: status_detail
+        aliases: [状态原因, 入库说明]
+      - name: tenant_id
+        source_column: tenant_id
+        label: 租户
+        description: 数据所属租户，由系统权限范围自动注入，不允许用户直接选择。
+        semantic_type: security_scope
+        selectable: false
+      - name: org_code
+        source_column: org_code
+        label: 组织
+        description: 数据所属组织，由系统权限范围自动注入，不允许用户直接选择。
+        semantic_type: security_scope
+        selectable: false
+      - name: owner_user_id
+        source_column: owner_user_id
+        label: 负责人
+        description: 订单负责人数据范围字段，由业务数据连接器按身份过滤。
+        semantic_type: security_scope
+        selectable: false
+      - name: access_scope
+        source_column: access_scope
+        label: 数据范围
+        description: 订单授权范围字段，由业务数据连接器或策略层过滤。
+        semantic_type: security_scope
+        selectable: false
+    metrics:
+      - name: order_count
+        label: 订单数量
+        aliases: [订单数, 采购订单数量]
+        description: 当前授权数据范围内的采购订单数量。
+        aggregation: count
+        field: order_number
+        unit: orders
+      - name: supplier_count
+        label: 供应商数量
+        aliases: [供应商数, 供应商数量]
+        description: 当前授权数据范围内的去重供应商数量。
+        aggregation: count_distinct
+        field: supplier_name
+        unit: suppliers
+      - name: purchase_amount
+        label: 采购金额
+        aliases: [采购金额, 采购额, 订单金额]
+        description: 采购订单总金额之和。
+        aggregation: sum
+        field: total_amount
+        unit: CNY
+      - name: average_order_amount
+        label: 平均订单金额
+        aliases: [平均采购金额, 平均订单额, 客单价]
+        description: 采购订单总金额除以订单数量，用于衡量平均订单规模。
+        aggregation: average
+        field: total_amount
+        unit: CNY
+
+  - id: inventory.stock
+    version: 1.0.0
+    name: 库存现状
+    description: 物料在不同仓库的当前库存事实数据，当前使用 Mock Connector 验证扩展链路。
+    domain: inventory
+    connector_id: mock.inventory.connector
+    enabled: true
+    required_permission: business.data.read
+    tags: [库存, 库存现状, 物料, 仓库, stock]
+    examples:
+      - 查询 SKU-001 的当前库存
+      - 查询上海一号仓库存不足的物料
+      - 按仓库统计可用库存
+    fields:
+      - name: item_id
+        source_column: item_id
+        label: 物料编码
+        description: 用于唯一标识一个物料或 SKU。
+        semantic_type: identifier
+        aliases: [物料号, SKU, 商品编码]
+      - name: item_name
+        source_column: item_name
+        label: 物料名称
+        description: 物料的业务名称。
+        semantic_type: dimension
+        aliases: [商品名称, 产品名称]
+      - name: warehouse_code
+        source_column: warehouse_code
+        label: 仓库编码
+        description: 仓库的业务编码。
+        semantic_type: dimension
+        aliases: [仓库号]
+      - name: warehouse_name
+        source_column: warehouse_name
+        label: 仓库名称
+        description: 库存所在仓库的名称。
+        semantic_type: dimension
+        aliases: [仓库]
+      - name: available_quantity
+        source_column: available_quantity
+        label: 可用库存
+        description: 当前可以被业务继续使用的库存数量。
+        semantic_type: measure_source
+        aliases: [库存数量, 可用数量, 现有库存]
+      - name: safety_stock
+        source_column: safety_stock
+        label: 安全库存
+        description: 该物料需要维持的最低库存数量。
+        semantic_type: measure_source
+        aliases: [安全库存量, 库存下限]
+      - name: unit
+        source_column: unit
+        label: 库存单位
+        description: 库存数量使用的计量单位。
+        semantic_type: dimension
+        aliases: [单位]
+      - name: stock_status
+        source_column: stock_status
+        label: 库存状态
+        description: 根据可用库存与安全库存判断的库存状态。
+        semantic_type: status
+        aliases: [库存情况, 库存健康状态]
+    metrics:
+      - name: available_stock
+        label: 可用库存合计
+        aliases: [库存合计, 可用库存量]
+        description: 当前授权数据范围内的可用库存数量之和。
+        aggregation: sum
+        field: available_quantity
+        unit: quantity

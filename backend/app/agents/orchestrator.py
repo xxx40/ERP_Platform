@@ -147,11 +147,47 @@ class GenericOrchestratorModule:
 
     async def request_guard(self, state, _context) -> dict[str, Any]:
         question = state["effective_message"]
-        semantic_route = await self._semantic_route(
-            question,
-            state.get("memory", {}),
-            state["identity"],
-        )
+        try:
+            semantic_route = await self._semantic_route(
+                question,
+                state.get("memory", {}),
+                state["identity"],
+            )
+        except ModelOutputError:
+            # Invalid model JSON is a routing failure, not permission to guess.
+            # Fail closed: no business/document Tool is exposed or executed.
+            if is_high_risk_request(question):
+                return {
+                    "understanding": Understanding(
+                        intent=IntentType.REJECT,
+                        user_goal=state["question"],
+                        summary="The request could not be safely classified and may be state-changing.",
+                        workflow_id="platform.generic_readonly_agent",
+                        routing_mode="semantic_router_fail_closed",
+                    ),
+                    "route": "reject",
+                }
+            understanding = Understanding(
+                intent=IntentType.CLARIFY,
+                user_goal=state["question"],
+                summary="The request could not be safely classified; clarification is required.",
+                missing_fields=["request_scope"],
+                workflow_id="platform.generic_readonly_agent",
+                route_confidence=0.0,
+                routing_mode="semantic_router_fail_closed",
+            )
+            return {
+                "understanding": understanding,
+                "clarification_request": {
+                    "target_tool_id": "",
+                    "collected_arguments": {},
+                    "missing_fields": ["request_scope"],
+                    "prompt": "请说明你要查询企业文档、当前业务数据，还是进行其他只读分析。",
+                    "persist": False,
+                    "error_code": "MODEL_OUTPUT_INVALID",
+                },
+                "route": "clarify",
+            }
         if semantic_route is None:
             # Offline/test adapters without semantic routing retain a conservative
             # execution guard. In the normal configured-model path, action versus
@@ -174,6 +210,18 @@ class GenericOrchestratorModule:
             )
             if understanding.intent == IntentType.CLARIFY:
                 missing_fields = understanding.missing_fields or ["order_number"]
+                order_reference = any(
+                    marker in "".join(question.split())
+                    for marker in (
+                        "\u8fd9\u5f20\u8ba2\u5355",
+                        "\u90a3\u5f20\u8ba2\u5355",
+                        "\u90a3\u5f20\u91c7\u8d2d\u5355",
+                        "\u6211\u90a3\u5f20\u91c7\u8d2d\u5355",
+                        "\u8fd9\u5355",
+                    )
+                )
+                if order_reference and "context_anchor" in missing_fields:
+                    missing_fields = ["order_number"]
                 return {
                     "understanding": understanding,
                     "clarification_request": {
@@ -182,9 +230,17 @@ class GenericOrchestratorModule:
                             "dataset_id": "procurement.purchase_orders"
                         },
                         "missing_fields": missing_fields,
-                        "prompt": "请提供需要查询的采购订单编号，例如 PO202607001。",
+                        "prompt": (
+                            "\u8bf7\u63d0\u4f9b\u9700\u8981\u67e5\u8be2\u7684\u91c7\u8d2d\u8ba2\u5355\u7f16\u53f7\uff0c\u4f8b\u5982 PO202607001\u3002"
+                            if order_reference
+                            else "\u8bf7\u8865\u5145\u4f60\u6307\u7684\u662f\u54ea\u4e00\u4e2a\u8ba2\u5355\u3001\u9879\u76ee\u3001\u6587\u6863\u6216\u4e1a\u52a1\u5bf9\u8c61\u3002"
+                        ),
                         "persist": True,
-                        "error_code": "ROUTING_CLARIFICATION_REQUIRED",
+                        "error_code": (
+                            "ROUTING_CLARIFICATION_REQUIRED"
+                            if order_reference
+                            else "REQUIRED_ARGUMENTS_MISSING"
+                        ),
                     },
                     "route": "clarify",
                 }
@@ -207,6 +263,16 @@ class GenericOrchestratorModule:
                 "understanding": understanding,
                 "semantic_route": semantic_route,
                 "route": "reject",
+            }
+        if semantic_route.authorization_denied:
+            return {
+                "understanding": understanding,
+                "semantic_route": semantic_route,
+                "error": UnauthorizedError(
+                    semantic_route.authorization_reason
+                    or "\u5f53\u524d\u8bf7\u6c42\u4e0d\u5728\u53ef\u8bbf\u95ee\u7684\u79df\u6237\u6570\u636e\u8303\u56f4\u5185\u3002"
+                ),
+                "route": "error",
             }
         if not semantic_route.capability_available:
             capability = semantic_route.unavailable_capability or "该业务数据查询能力"
@@ -994,7 +1060,11 @@ class GenericOrchestratorModule:
                             "unavailable_capability": self._capability_label(route),
                         }
                     )
-                if route.capability_available:
+                # An authorization-denied route is already terminal. Do not
+                # validate its intentionally empty Tool list as if it were a
+                # normal knowledge/business route; request_guard will convert
+                # it into the structured UNAUTHORIZED response.
+                if route.capability_available and not route.authorization_denied:
                     self._validate_semantic_tool_contract(route, tool_domains)
                 if (
                     route.confidence < 0.55

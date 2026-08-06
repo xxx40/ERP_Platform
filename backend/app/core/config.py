@@ -126,7 +126,7 @@ class Settings(BaseSettings):
     business_data_api_base_url: str = "http://127.0.0.1:8101"
     business_data_api_key: SecretStr | None = None
     business_data_api_timeout_seconds: float = Field(default=10, gt=0, le=60)
-    business_dataset_catalog_path: str = "purchase_order_service/datasets.yaml"
+    business_dataset_catalog_path: str = "backend/config/business_datasets.yaml"
     http_tool_catalog_path: str = "backend/config/http_tools.yaml"
     data_connector_allowed_cidrs: str = ""
     data_connector_test_timeout_seconds: float = Field(default=8, gt=0, le=30)

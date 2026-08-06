@@ -45,16 +45,18 @@ def test_live_evaluation_cases_cover_core_platform_paths() -> None:
         "security",
         "resilience",
     } <= categories
+    # Composite is the single public label for multi-source questions;
+    # ``mixed`` is a legacy label and must not be required in new fixtures.
     assert {
         "document",
         "order",
         "analytics",
-        "mixed",
         "composite",
         "general",
         "clarify",
         "reject",
     } <= intents
+    assert "mixed" not in intents
     assert any(case.get("expected_error_code") == "ORDER_NOT_FOUND" for case in cases)
     previous_month_case = next(case for case in cases if case["id"] == "ERROR-03")
     assert previous_month_case["expected_status"] == "success"

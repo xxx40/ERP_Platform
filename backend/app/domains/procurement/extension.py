@@ -12,7 +12,9 @@ from app.core.errors import AppError, NotFoundError, UnauthorizedError
 from app.core.security import extract_order_number
 from app.domains.knowledge.presentation import record_retrieval
 from app.domains.procurement.presentation import (
+    confirmed_analytics_facts,
     confirmed_order_facts,
+    confirmed_order_list_facts,
     unknown_order_facts,
 )
 from app.schemas.chat import (
@@ -119,7 +121,7 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
             intent = IntentType.CLARIFY
             capability_id = "procurement.order"
         elif order_number:
-            intent = IntentType.MIXED if evidence else IntentType.ORDER
+            intent = IntentType.COMPOSITE if evidence else IntentType.ORDER
             capability_id = "procurement.order"
         else:
             intent = IntentType.COMPOSITE if evidence else IntentType.ANALYTICS
@@ -473,6 +475,7 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
                         ),
                     }
                 )
+        answer = self._merge_business_facts(answer, order, order_list, analytics)
         requires_evidence = bool(
             (order is not None or analytics is not None)
             and self._contains(state["effective_message"], self.EVIDENCE_MARKERS)
@@ -492,6 +495,30 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
                 else "respond"
             ),
         }
+
+    @staticmethod
+    def _merge_business_facts(
+        answer: DocumentAnswer | None,
+        order: OrderCard | None,
+        order_list: OrderListResult | None,
+        analytics: AnalyticsCard | None,
+    ) -> DocumentAnswer | None:
+        if answer is None:
+            return None
+        facts: list[str] = []
+        if order is not None:
+            facts.extend(confirmed_order_facts(order))
+        if order_list is not None:
+            facts.extend(confirmed_order_list_facts(order_list))
+        if analytics is not None:
+            facts.extend(confirmed_analytics_facts(analytics))
+        return answer.model_copy(
+            update={
+                "confirmed_facts": list(
+                    dict.fromkeys([*facts, *answer.confirmed_facts])
+                )
+            }
+        )
 
     async def verify(self, state):
         retrieval = state.get("retrieval_result")
@@ -566,8 +593,14 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
             state["verification_result"].issues,
             state.get("domain_state", {}).get("order_card"),
         )
+        domain_state = state.get("domain_state", {})
+        answer = self._merge_business_facts(
+            answer,
+            domain_state.get("order_card"),
+            domain_state.get("order_list"),
+            domain_state.get("analytics_card"),
+        )
         return {"answer": answer, "repair_attempt": 1, "route": "success"}
-
     async def response_payload(self, state):
         retrieval = state.get("retrieval_result")
         sources = []
@@ -599,7 +632,6 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
             return None
         answer = DocumentAnswer(
             conclusion=error.message,
-            confirmed_facts=confirmed_order_facts(order) if order is not None else [],
             unknowns=(
                 unknown_order_facts(state["effective_message"], order)
                 if order is not None
@@ -608,6 +640,7 @@ class ProcurementAgentExtension(BaseAgentDomainExtension):
             details=[analytics.summary] if analytics is not None else [],
             cautions=["已返回的业务事实仍然有效；缺失部分没有用模型猜测补齐。"],
         )
+        answer = self._merge_business_facts(answer, order, order_list, analytics)
         return {
             "has_partial_facts": True,
             "order_card": order,

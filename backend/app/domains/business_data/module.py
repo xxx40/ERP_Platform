@@ -64,6 +64,21 @@ class BusinessDataModule:
         dataset_id = str(payload.pop("dataset_id", "")).strip()
         if not dataset_id:
             raise ValueError("dataset_id is required for universal business data query")
+        descriptor = self.catalog.get(dataset_id)
+        if descriptor is None or not descriptor.published:
+            # The catalog is the capability boundary. Do not delegate unknown or
+            # disabled subjects to a fallback connector, and never treat a model
+            # supplied dataset name as an arbitrary database/table selector.
+            from app.core.errors import NotFoundError
+            raise NotFoundError(
+                "UNSUPPORTED_CAPABILITY",
+                f"Dataset is not published for read-only access: {dataset_id}",
+            )
+        if descriptor.required_permission != "business.data.read":
+            raise NotFoundError(
+                "UNSUPPORTED_CAPABILITY",
+                f"Dataset requires a capability not exposed by this Agent: {dataset_id}",
+            )
         return await self.adapter.query(
             dataset_id,
             payload,

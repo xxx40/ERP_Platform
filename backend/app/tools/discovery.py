@@ -60,10 +60,12 @@ class ToolDiscoveryService:
         denied_tool_ids: list[str] = []
         unhealthy = 0
         for tool in candidates:
+            # Discovery authorizes the capability, not a model-supplied dataset.
+            # The executor re-authorizes the concrete dataset after validating the
+            # universal query input.
             resource = (
-                f"dataset:{tool.spec.tool_id[5:-6]}"
-                if tool.spec.tool_id.startswith("data.")
-                and tool.spec.tool_id.endswith(".query")
+                "capability:business.data"
+                if tool.spec.tool_id == "data.business.query"
                 else f"tool:{tool.spec.tool_id}"
             )
             decision = await self.policy_provider.authorize(

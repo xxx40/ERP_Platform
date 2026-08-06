@@ -29,6 +29,8 @@ class ToolPolicyObligations(BaseModel):
     masked_fields: list[str] = Field(default_factory=list, max_length=128)
     max_rows: int | None = Field(default=None, ge=1, le=5000)
     knowledge_scopes: list[str] = Field(default_factory=list, max_length=128)
+    scope_tenant_id: str | None = Field(default=None, max_length=128)
+    scope_org_code: str | None = Field(default=None, max_length=128)
 
 
 class PolicyProvider(Protocol):

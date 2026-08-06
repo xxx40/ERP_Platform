@@ -26,6 +26,11 @@ class BusinessDatasetDescriptor(BaseModel):
         return f"data.{self.id}.query"
 
     @property
+    def published(self) -> bool:
+        """Whether this descriptor is available to the universal query gateway."""
+        return bool(self.enabled and self.id.strip())
+
+    @property
     def selectable_fields(self) -> list[str]:
         return [
             str(item["name"])
@@ -54,3 +59,10 @@ class BusinessDatasetCatalog(BaseModel):
     @classmethod
     def from_yaml(cls, path: Path) -> "BusinessDatasetCatalog":
         return cls.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+
+    def get(self, dataset_id: str) -> BusinessDatasetDescriptor | None:
+        return next((item for item in self.datasets if item.id == dataset_id), None)
+
+    def is_published(self, dataset_id: str) -> bool:
+        descriptor = self.get(dataset_id)
+        return bool(descriptor and descriptor.published)

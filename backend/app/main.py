@@ -9,7 +9,9 @@ from app.adapters.model import ModelAdapter
 from app.adapters.purchase_order import MockPurchaseOrderAdapter, UnifiedPurchaseDataAdapter
 from app.adapters.business_data import BusinessDataAdapter
 from app.business_data.catalog import BusinessDatasetCatalog
+from app.business_data.providers import BusinessDataProviderRegistry, ProviderRegistration
 from app.domains.procurement.embedded import EmbeddedProcurementBusinessDataAdapter
+from app.domains.inventory import InventoryProvider
 from app.adapters.wise import WiseAdapter
 from app.api.routes import router
 from app.core.config import Settings, get_settings
@@ -97,9 +99,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if active_settings.purchase_order_provider == "http"
         else None
     )
-    business_data_adapter = EmbeddedProcurementBusinessDataAdapter(
-        order_adapter,
-        fallback_adapter=business_gateway_adapter,
+    procurement_provider = EmbeddedProcurementBusinessDataAdapter(order_adapter)
+    business_data_adapter = BusinessDataProviderRegistry(
+        [
+            ProviderRegistration(
+                provider=procurement_provider,
+                dataset_ids=frozenset({"procurement.purchase_orders"}),
+                domain="procurement",
+            ),
+            ProviderRegistration(
+                provider=InventoryProvider(),
+                dataset_ids=frozenset({"inventory.stock"}),
+                domain="inventory",
+            ),
+        ],
+        fallback=business_gateway_adapter,
     )
     business_dataset_catalog_holder = {
         "current": BusinessDatasetCatalog.from_yaml(

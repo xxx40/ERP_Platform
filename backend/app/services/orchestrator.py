@@ -229,13 +229,36 @@ class ChatOrchestrator:
         context_missing: bool,
     ) -> ChatResponse:
         if context_missing:
-            response = self._clarification_response(
-                request_id,
-                current_session,
-                clean_message,
-                ["context_anchor"],
-                "请补充你指的是哪一个订单、项目、文档或业务对象。",
-            )
+            # Missing conversational context for an order reference is a
+            # routing clarification, not a generic pending-argument task.
+            # Returning the semantic field keeps the safety boundary explicit
+            # and allows the next turn to provide a PO number.
+            normalized_message = "".join(clean_message.split())
+            # An expired prior topic is different from a fresh, context-free
+            # order reference: the former asks the user to re-anchor the whole
+            # object, while the latter can be clarified directly with a PO no.
+            context_expired = task_memory.has_anchor() and task_memory.is_expired(self.memory_turn_limit)
+            order_reference = any(
+                marker in normalized_message
+                for marker in ("\u8fd9\u5f20\u8ba2\u5355", "\u90a3\u5f20\u8ba2\u5355", "\u90a3\u5f20\u91c7\u8d2d\u5355", "\u6211\u90a3\u5f20\u91c7\u8d2d\u5355", "\u8fd9\u5355")
+            ) and not context_expired
+            if order_reference:
+                response = self._clarification_response(
+                    request_id,
+                    current_session,
+                    clean_message,
+                    ["order_number"],
+                    "\u8bf7\u63d0\u4f9b\u9700\u8981\u67e5\u8be2\u7684\u91c7\u8d2d\u8ba2\u5355\u7f16\u53f7\uff0c\u4f8b\u5982 PO202607001\u3002",
+                    error_code="ROUTING_CLARIFICATION_REQUIRED",
+                )
+            else:
+                response = self._clarification_response(
+                    request_id,
+                    current_session,
+                    clean_message,
+                    ["context_anchor"],
+                    "\u8bf7\u8865\u5145\u4f60\u6307\u7684\u662f\u54ea\u4e00\u4e2a\u8ba2\u5355\u3001\u9879\u76ee\u3001\u6587\u6863\u6216\u4e1a\u52a1\u5bf9\u8c61\u3002",
+                )
             return await self._save(clean_message, response)
 
         definition = platform.graph_registry.get(self.MAIN_GRAPH_ID)
@@ -440,6 +463,7 @@ class ChatOrchestrator:
         message: str,
         *,
         target_tool_id: str | None = None,
+        error_code: str = "REQUIRED_ARGUMENTS_MISSING",
     ) -> ChatResponse:
         workflow = WorkflowTrace(
             plan_summary="等待用户补充执行只读工具所需的参数。",
@@ -467,7 +491,7 @@ class ChatOrchestrator:
                 workflow_id=cls.MAIN_GRAPH_ID,
                 routing_mode="pending_agent_task",
             ),
-            error=ErrorInfo(code="REQUIRED_ARGUMENTS_MISSING", message=message),
+            error=ErrorInfo(code=error_code, message=message),
             workflow=workflow,
         )
 

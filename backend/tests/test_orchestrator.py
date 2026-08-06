@@ -262,6 +262,9 @@ async def test_not_inbound_order_list_queries_business_data_without_rag(tmp_path
     assert response.understanding.intent == IntentType.ORDER
     assert response.order_list is not None
     assert response.order_list.items[0].order_number == "PO202607001"
+    assert response.document_answer is not None
+    assert response.document_answer.confirmed_facts
+    assert "采购订单列表查询" in response.document_answer.confirmed_facts[0]
     assert response.sources == []
     assert response.presentation[0].type == "table"
     assert response.presentation[0].rows
@@ -290,7 +293,7 @@ async def test_clarification_continues_original_question(tmp_path) -> None:
     assert first.workflow.final_state == "waiting_user"
     second = await orchestrator.handle("PO202607001", "session-1")
     assert second.status == "success"
-    assert second.understanding.intent == "mixed"
+    assert second.understanding.intent == "composite"
 
 
 async def test_context_reference_without_memory_has_converged_clarification(tmp_path) -> None:
@@ -331,7 +334,7 @@ async def test_explanation_question_forces_mixed_tools(tmp_path) -> None:
     )
 
     assert response.status == "success"
-    assert response.understanding.intent == IntentType.MIXED
+    assert response.understanding.intent == IntentType.COMPOSITE
     assert response.order_card.order_number == "PO202607001"
     assert response.document_answer is not None
 
@@ -342,7 +345,7 @@ async def test_order_number_followed_by_chinese_runs_mixed_flow(tmp_path) -> Non
     response = await orchestrator.handle("PO202607001下一步应该做什么")
 
     assert response.status == "success"
-    assert response.understanding.intent == IntentType.MIXED
+    assert response.understanding.intent == IntentType.COMPOSITE
     assert response.understanding.order_number == "PO202607001"
     assert response.order_card.order_number == "PO202607001"
     assert response.document_answer is not None
@@ -374,7 +377,7 @@ async def test_order_process_basis_runs_mixed_flow(tmp_path) -> None:
     )
 
     assert response.status == "success"
-    assert response.understanding.intent == IntentType.MIXED
+    assert response.understanding.intent == IntentType.COMPOSITE
     assert response.order_card.order_number == "PO202607001"
     assert response.document_answer is not None
 
@@ -399,7 +402,7 @@ async def test_bounded_memory_restores_recent_order_reference(tmp_path) -> None:
     assert first.status == "success"
     assert second.status == "success"
     assert second.understanding.order_number == "PO202607001"
-    assert second.understanding.intent == IntentType.MIXED
+    assert second.understanding.intent == IntentType.COMPOSITE
 
 
 async def test_structured_memory_restores_project_without_storing_evidence(tmp_path) -> None:
@@ -717,6 +720,8 @@ async def test_composite_question_combines_analytics_and_knowledge(tmp_path) -> 
     assert response.understanding.intent == IntentType.COMPOSITE
     assert response.analytics_card is not None
     assert response.document_answer is not None
+    assert response.document_answer.confirmed_facts
+    assert any("采购分析范围" in fact for fact in response.document_answer.confirmed_facts)
     assert response.sources
     assert run["workflow_id"] == "platform.generic_readonly_agent"
     assert {call["tool_id"] for call in run["tool_calls"]} == {
@@ -776,6 +781,8 @@ async def test_composite_workflow_keeps_analytics_when_knowledge_is_missing(
 
     assert response.status == "not_found"
     assert response.analytics_card is not None
+    assert response.document_answer.confirmed_facts
+    assert any("采购分析范围" in fact for fact in response.document_answer.confirmed_facts)
     assert response.document_answer.source_ids == []
     assert response.workflow.final_state == "partial"
     assert response.error.code == "KNOWLEDGE_EVIDENCE_NOT_FOUND"
@@ -814,7 +821,7 @@ async def test_mixed_workflow_falls_back_to_frozen_order_facts_on_answer_timeout
     )
 
     assert response.status == "success"
-    assert response.understanding.intent == IntentType.MIXED
+    assert response.understanding.intent == IntentType.COMPOSITE
     assert response.order_card.order_number == "PO202607001"
     assert response.document_answer.confirmed_facts
     assert response.document_answer.source_ids == ["S1"]
@@ -1108,7 +1115,7 @@ async def test_semantic_route_executes_business_then_knowledge_for_composite(
     run = await orchestrator.repository.get_workflow_run(response.request_id)
 
     assert response.status == "success"
-    assert response.understanding.intent == IntentType.MIXED
+    assert response.understanding.intent == IntentType.COMPOSITE
     assert response.order_card.order_number == "PO202607001"
     assert response.sources
     assert [call["tool_id"] for call in run["tool_calls"]] == [
@@ -1223,7 +1230,7 @@ async def test_invalid_semantic_tool_plan_never_falls_back_to_keyword_routing(
     response = await orchestrator.handle("还有哪些采购单没有入库？")
     trace = await orchestrator.repository.get_trace(response.request_id)
 
-    assert response.status == "service_error"
+    assert response.status == "needs_clarification"
     assert response.error.code == "MODEL_OUTPUT_INVALID"
     assert "knowledge.retrieve" not in [span["name"] for span in trace["spans"]]
 
@@ -1393,9 +1400,9 @@ async def test_model_fabricated_business_tool_converges_to_unsupported_capabilit
     run = await orchestrator.repository.get_workflow_run(response.request_id)
 
     assert response.status == "not_found"
-    assert response.error.code == "DATASET_NOT_FOUND"
+    assert response.error.code == "UNSUPPORTED_CAPABILITY"
     assert "inventory" in response.error.message
-    assert [call["tool_id"] for call in run["tool_calls"]] == ["data.business.query"]
+    assert [call["tool_id"] for call in run["tool_calls"]] == []
 
 
 async def test_unconfigured_semantic_router_never_degrades_to_keyword_routing(
@@ -1539,3 +1546,17 @@ async def test_semantic_procurement_overview_uses_analytics_card_without_raw_dat
     assert "dataset_id" not in serialized
     assert '"schema_version"' not in serialized
     assert '"connector_id"' not in serialized
+
+async def test_context_free_order_reference_requests_order_number_without_tool_call(tmp_path) -> None:
+    orchestrator = build_orchestrator(tmp_path)
+
+    response = await orchestrator.handle("\u8fd9\u5f20\u8ba2\u5355\u600e\u4e48\u8fd8\u6ca1\u8fdb\u4ed3\uff1f", "fresh-order-reference")
+
+    assert response.status == "needs_clarification"
+    assert response.error.code == "ROUTING_CLARIFICATION_REQUIRED"
+    assert response.understanding.missing_fields == ["order_number"]
+    trace = await orchestrator.repository.get_trace(response.request_id)
+    assert not any(
+        span.get("name", "").startswith("tool.")
+        for span in trace.get("spans", [])
+    )

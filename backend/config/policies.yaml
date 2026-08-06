@@ -14,6 +14,11 @@ roles:
     obligations:
       business.data.read:
         max_rows: 500
+    scopes:
+      business.data.read:
+        datasets: ["*"]
+        tenant: same
+        organization: same
   procurement_specialist:
     permissions:
       - knowledge.search
@@ -25,6 +30,11 @@ roles:
     obligations:
       business.data.read:
         max_rows: 200
+    scopes:
+      business.data.read:
+        datasets: ["*"]
+        tenant: same
+        organization: same
   employee:
     permissions:
       - knowledge.search
@@ -54,6 +64,11 @@ roles:
     obligations:
       business.data.read:
         max_rows: 1000
+    scopes:
+      business.data.read:
+        datasets: ["*"]
+        tenant: same
+        organization: same
   data_source_reviewer:
     permissions:
       - platform.status.read

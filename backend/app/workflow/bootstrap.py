@@ -5,7 +5,9 @@ from pathlib import Path
 from app.agents.extensions import AgentExtensionRegistry
 from app.capabilities.catalog import CapabilityCatalog
 from app.business_data.catalog import BusinessDatasetCatalog
+from app.business_data.providers import BusinessDataProviderRegistry, ProviderRegistration
 from app.domains.procurement.embedded import EmbeddedProcurementBusinessDataAdapter
+from app.domains.inventory import InventoryProvider
 from app.identity.providers import DevelopmentIdentityProvider
 from app.harness.contracts import PlatformSnapshotInfo
 from app.policy.providers import ConfigPolicyProvider
@@ -70,17 +72,36 @@ def build_agent_platform(
     )
     if business_data_adapter is None:
         # Keep embedded/demo construction on the same model-facing contract as
-        # production: procurement is an internal connector, not fixed Tools.
-        business_data_adapter = EmbeddedProcurementBusinessDataAdapter(order_adapter)
+        # production: procurement and inventory are domain providers behind one
+        # universal business-data Tool.
+        business_data_adapter = BusinessDataProviderRegistry(
+            [
+                ProviderRegistration(
+                    provider=EmbeddedProcurementBusinessDataAdapter(order_adapter),
+                    dataset_ids=frozenset({"procurement.purchase_orders"}),
+                    domain="procurement",
+                ),
+                ProviderRegistration(
+                    provider=InventoryProvider(),
+                    dataset_ids=frozenset({"inventory.stock"}),
+                    domain="inventory",
+                ),
+            ]
+        )
     if business_dataset_catalog is None:
-        catalog_path = Path(__file__).resolve().parents[3] / "purchase_order_service" / "datasets.yaml"
+        catalog_path = Path(__file__).resolve().parents[2] / "config" / "business_datasets.yaml"
         if catalog_path.is_file():
             business_dataset_catalog = BusinessDatasetCatalog.from_yaml(catalog_path)
 
     tool_registry = ToolRegistry()
     node_registry = NodeHandlerRegistry()
     state_schema_registry = StateSchemaRegistry()
-    tool_executor = ToolExecutor(tool_registry, policy_provider, repository)
+    tool_executor = ToolExecutor(
+        tool_registry,
+        policy_provider,
+        repository,
+        dataset_catalog=business_dataset_catalog,
+    )
     agent_extension_registry = AgentExtensionRegistry()
     plugin_context = PluginContext(
         repository=repository,

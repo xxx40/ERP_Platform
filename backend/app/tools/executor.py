@@ -27,11 +27,13 @@ class ToolExecutor:
         repository,
         *,
         retry_policy: RetryPolicy | None = None,
+        dataset_catalog=None,
     ) -> None:
         self.registry = registry
         self.policy_provider = policy_provider
         self.repository = repository
         self.retry_policy = retry_policy or RetryPolicy()
+        self.dataset_catalog = dataset_catalog
 
     async def execute(
         self,
@@ -59,12 +61,23 @@ class ToolExecutor:
                 registered.input_validator(arguments)
             except Exception as exc:
                 raise ToolContractError(tool_id, "input") from exc
-        default_resource = (
-            f"dataset:{tool_id[5:-6]}"
-            if tool_id.startswith("data.") and tool_id.endswith(".query")
-            else f"tool:{tool_id}"
-        )
-        resource = str(arguments.get("resource") or default_resource)
+        dataset_descriptor = None
+        if tool_id == "data.business.query":
+            dataset_id = str(arguments.get("dataset_id") or "").strip()
+            if self.dataset_catalog is not None:
+                dataset_descriptor = self.dataset_catalog.get(dataset_id)
+                if dataset_descriptor is None or not dataset_descriptor.published:
+                    from app.core.errors import NotFoundError
+                    raise NotFoundError(
+                        "UNSUPPORTED_CAPABILITY",
+                        f"Dataset is not published for read-only access: {dataset_id}",
+                    )
+            # Never allow a transport argument to override the concrete dataset
+            # resource used by the PDP.
+            resource = f"dataset:{dataset_id}"
+        else:
+            default_resource = f"tool:{tool_id}"
+            resource = str(arguments.get("resource") or default_resource)
         decision = await self.policy_provider.authorize(
             context.identity,
             PolicyRequest(
@@ -73,6 +86,11 @@ class ToolExecutor:
                 attributes={
                     "tenant_id": context.identity.tenant_id,
                     "org_code": context.identity.org_code,
+                    "target_tenant_id": context.identity.tenant_id,
+                    "target_org_code": context.identity.org_code,
+                    "dataset_id": arguments.get("dataset_id"),
+                    "dataset_enabled": getattr(dataset_descriptor, "enabled", None),
+                    "dataset_published": getattr(dataset_descriptor, "published", None),
                     "graph_id": context.graph_id,
                     "node_id": context.node_id,
                     "requested_fields": list(arguments.get("fields") or []),

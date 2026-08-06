@@ -56,6 +56,25 @@ class ModelAdapter:
         tools: list[dict[str, Any]],
     ) -> SemanticRoutePlan:
         now = datetime.now(ZoneInfo("Asia/Shanghai"))
+
+        # Enforce high-confidence safety and routing boundaries before the
+        # upstream model is contacted. This keeps cross-tenant requests,
+        # out-of-scope requests, missing-order-number clarifications and other
+        # deterministic read-only routes fail-closed even when the model
+        # gateway is unavailable or quota-limited. The resulting plan still
+        # goes through the normal authorization and Tool executor gates.
+        if SemanticRoutePlan.has_high_confidence_semantics(question, memory):
+            deterministic_plan = SemanticRoutePlan(
+                request_kind="general",
+                confidence=0.99,
+                summary="deterministic high-confidence route",
+            )
+            return deterministic_plan.stabilize_with_question(
+                question,
+                today=now.date(),
+                memory=memory,
+            )
+
         system = (
             "You are the semantic router for an enterprise ERP assistant. Understand the "
             "whole user utterance, conversation context, requested facts, operation, "
@@ -114,13 +133,31 @@ class ModelAdapter:
             "evidence_need 必须是布尔值；data_needs 只能使用 public_knowledge、"
             "enterprise_knowledge、business_data。"
         )
-        plan = await self._request_model(
-            system,
-            user,
-            SemanticRoutePlan,
-            max_tokens=700,
+        try:
+            plan = await self._request_model(
+                system,
+                user,
+                SemanticRoutePlan,
+                max_tokens=700,
+            )
+        except ModelOutputError:
+            # Keep the normal fail-closed behavior for unknown malformed output,
+            # but recover a small set of unambiguous safety/document/context
+            # utterances. Those cases do not need model creativity and otherwise
+            # create avoidable routing false negatives.
+            if not SemanticRoutePlan.has_high_confidence_semantics(question, memory):
+                raise
+            plan = SemanticRoutePlan(
+                request_kind="clarify",
+                data_needs=["public_knowledge"],
+                confidence=0.9,
+                summary="需要根据问题语义确定只读处理范围。",
+            )
+        return plan.stabilize_with_question(
+            question,
+            today=now.date(),
+            memory=memory,
         )
-        return plan.stabilize_with_question(question, today=now.date())
 
     async def answer_general(self, question: str) -> DocumentAnswer:
         system = (
