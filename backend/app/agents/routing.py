@@ -558,6 +558,38 @@ class SemanticRoutePlan(BaseModel):
             if universal_id not in self.tool_arguments and self.request_kind == RequestKind.BUSINESS_QUERY:
                 self.tool_arguments[universal_id] = {}
 
+        # If the model returned a low-information general/clarify plan, an explicit
+        # purchase-order number plus a process/policy request is still an
+        # unambiguous composite read. Promote it before the evidence phase so
+        # the business fact query cannot be skipped.
+        policy_markers = (
+            "\u6309\u6d41\u7a0b", "\u6309\u5236\u5ea6", "\u6309\u89c4\u5b9a",
+            "\u6d41\u7a0b", "\u5236\u5ea6", "\u89c4\u5b9a", "\u4e0b\u4e00\u6b65",
+            "\u600e\u4e48\u5904\u7406", "\u600e\u4e48\u8ddf\u8fdb", "\u600e\u4e48\u6536\u8d27",
+            "\u6ce8\u610f\u5565", "\u6ce8\u610f\u4ec0\u4e48", "\u5361\u5728\u54ea\u91cc",
+        )
+        if order_number_in_question and any(
+            marker in normalized for marker in policy_markers
+        ) and self.request_kind != RequestKind.ACTION:
+            self.request_kind = RequestKind.BUSINESS_QUERY
+            self.domain = "procurement"
+            self.operation = "query_status"
+            self.entity = "purchase_order"
+            self.identifiers["order_number"] = order_number_in_question
+            self.data_needs = ["business_data"]
+            self.evidence_need = True
+            self.required_tools = [universal_id]
+            self.tool_arguments = {
+                universal_id: {
+                    "dataset_id": "procurement.purchase_orders",
+                    "order_number": order_number_in_question,
+                }
+            }
+            self.missing_fields = []
+            self.clarification_question = None
+            self.capability_available = True
+            self.unavailable_capability = None
+
         if (self.domain or "").lower() != "procurement":
             return self
 
@@ -646,12 +678,16 @@ class SemanticRoutePlan(BaseModel):
             inbound_state_requested = any(marker in normalized for marker in (*incomplete_markers, *not_inbound_markers))
             if analytics_requested and not inbound_state_requested:
                 arguments.pop("filters", None)
-            if any(marker in normalized for marker in incomplete_markers):
+            # An explicit order number always identifies a single-order query.
+            # Inbound-state words describe that order; they must not
+            # downgrade the request into a filtered list query.
+            explicit_order_number = order_number_in_question or self.identifiers.get("order_number") or arguments.get("order_number")
+            if not explicit_order_number and any(marker in normalized for marker in incomplete_markers):
                 self.operation = "list_incomplete_inbound_orders"
                 arguments["filters"] = [{"field": "business_status", "operator": "eq", "value": "incomplete"}]
-            elif self.operation == "list_incomplete_inbound_orders" and not any(marker in normalized for marker in not_inbound_markers):
+            elif not explicit_order_number and self.operation == "list_incomplete_inbound_orders" and not any(marker in normalized for marker in not_inbound_markers):
                 arguments["filters"] = [{"field": "business_status", "operator": "eq", "value": "incomplete"}]
-            elif any(marker in normalized for marker in not_inbound_markers):
+            elif not explicit_order_number and any(marker in normalized for marker in not_inbound_markers):
                 self.operation = "list_not_inbound_orders"
                 arguments["filters"] = [{"field": "business_status", "operator": "eq", "value": "not_inbound"}]
             if not arguments.get("filters") and self.filters:

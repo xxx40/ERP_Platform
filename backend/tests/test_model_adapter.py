@@ -1126,6 +1126,52 @@ def _semantic_plan_for_stability(
     )
 
 
+def test_semantic_route_promotes_order_policy_question_from_general() -> None:
+    questions = [
+        "PO202607001 \u6309\u5236\u5ea6\u4e0b\u4e00\u6b65\u5462\uff1f",
+        "\u67e5\u4e0b PO202607001\uff0c\u518d\u628a\u76f8\u5173\u6536\u8d27\u6d41\u7a0b\u4e00\u8d77\u8bb2\u660e\u767d\u3002",
+        "\u6211\u90a3\u5f20 PO202607001 \u5361\u5728\u6536\u8d27\uff0c\u5148\u5e2e\u6211\u67e5\u4e8b\u5b9e\uff0c\u518d\u8bf4\u5236\u5ea6\u4e0a\u600e\u4e48\u529e\u3002",
+    ]
+    for question in questions:
+        plan = SemanticRoutePlan(
+            request_kind=RequestKind.GENERAL,
+            confidence=0.9,
+            summary="model returned a low-information route",
+        )
+        plan.stabilize_with_question(question, today=date(2026, 8, 7))
+
+        assert plan.request_kind == RequestKind.COMPOSITE
+        assert plan.required_tools == ["data.business.query", "knowledge.search"]
+        assert plan.identifiers["order_number"] == "PO202607001"
+        assert plan.tool_arguments["data.business.query"]["order_number"] == "PO202607001"
+
+
+def test_semantic_route_preserves_explicit_order_over_inbound_state_list_filter() -> None:
+    questions = [
+        "PO202607001 \u73b0\u5728\u4e3a\u5565\u6ca1\u5168\u8fdb\u4ed3\uff1f\u6309\u6d41\u7a0b\u6211\u63a5\u4e0b\u6765\u8be5\u5e72\u5565\uff1f",
+        "PO202607002 \u5df2\u7ecf\u5165\u5e93\u4e86\u5427\uff1f\u987a\u4fbf\u544a\u8bc9\u6211\u6309\u5236\u5ea6\u6536\u8d27\u8981\u6ce8\u610f\u5565\u3002",
+    ]
+    for question in questions:
+        plan = SemanticRoutePlan(
+            request_kind=RequestKind.GENERAL,
+            confidence=0.9,
+            summary="model returned a low-information route",
+        )
+        plan.stabilize_with_question(question, today=date(2026, 8, 7))
+
+        assert plan.request_kind == RequestKind.COMPOSITE
+        assert plan.required_tools == ["data.business.query", "knowledge.search"]
+        assert plan.tool_arguments["data.business.query"].get("order_number") in {"PO202607001", "PO202607002"}
+        assert plan.operation == "query_status"
+
+        plan.normalize_plan()
+        query = plan.tool_arguments["data.business.query"]
+        assert len(query["filters"]) == 1
+        assert query["filters"][0]["field"] == "order_number"
+        assert query["filters"][0]["operator"] == "eq"
+        assert query["filters"][0]["value"] in {"PO202607001", "PO202607002"}
+
+
 def test_semantic_route_stabilizes_current_month_without_snapshot_key() -> None:
     plan = _semantic_plan_for_stability(
         operation="query_aggregate_metrics",

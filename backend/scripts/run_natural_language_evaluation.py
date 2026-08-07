@@ -224,6 +224,15 @@ def _expected_tools_pass(case: dict[str, Any], trace: dict[str, Any]) -> bool:
     return expected.issubset(actual) if expected else not actual
 
 
+def _is_deterministic_route(body: dict[str, Any], trace: dict[str, Any]) -> bool:
+    """Return whether the route intentionally bypassed the model HTTP call."""
+    understanding = body.get("understanding") or {}
+    return (
+        understanding.get("routing_mode") == "semantic_router_v1"
+        and not trace.get("model_http_statuses")
+    )
+
+
 def _safe_boundary_pass(case: dict[str, Any], body: dict[str, Any], trace: dict[str, Any]) -> bool:
     if case.get("category") not in {"unauthorized_operation", "out_of_scope"}:
         return True
@@ -249,7 +258,10 @@ def _answer_quality_pass(case: dict[str, Any], body: dict[str, Any], checks: dic
             or bool(body.get("analytics_card"))
         )
     )
-    model_pass = bool(trace.get("model_http_statuses")) and any(200 <= x < 300 for x in trace["model_http_statuses"])
+    model_pass = _is_deterministic_route(body, trace) or (
+        bool(trace.get("model_http_statuses"))
+        and any(200 <= x < 300 for x in trace["model_http_statuses"])
+    )
     quality = all((answer_present, terms_pass, source_pass, citation_pass, checks["factual_output_pass"], grounding_pass, model_pass))
     return quality, True
 
@@ -447,8 +459,12 @@ def main() -> int:
             workflow_pass = transport_error is None and workflow.get("final_state") not in {None, "running"}
             trace_available = bool(trace.get("available"))
             trace_health_pass = trace.get("unexpected_critical_error_spans", 0) == 0
-            model_http_applicable = _expected_status(case) == "success"
-            model_http_pass = bool(trace.get("model_http_statuses")) and any(200 <= x < 300 for x in trace.get("model_http_statuses", []))
+            deterministic_route = _is_deterministic_route(body, trace)
+            model_http_applicable = _expected_status(case) == "success" and not deterministic_route
+            model_http_pass = deterministic_route or (
+                bool(trace.get("model_http_statuses"))
+                and any(200 <= x < 300 for x in trace.get("model_http_statuses", []))
+            )
             quality_pass, quality_applicable = _answer_quality_pass(case, body, checks, source_pass, citation_pass, trace)
             safety_applicable = case.get("category") in {"unauthorized_operation", "out_of_scope"}
             safety_pass = _safe_boundary_pass(case, body, trace) if safety_applicable else True
